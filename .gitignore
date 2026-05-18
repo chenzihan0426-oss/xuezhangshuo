@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+build/
+dist/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# tests
+coverage/
+playwright-report/
+test-results/
+.vitest-cache/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+scripts/.cache/
+
+# misc
+*.tsbuildinfo
+next-env.d.ts
+.vercel

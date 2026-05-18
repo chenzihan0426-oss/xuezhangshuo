@@ -1,0 +1,166 @@
+'use client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox, type ComboItem } from '@/components/ui/combobox';
+import { X } from 'lucide-react';
+
+export interface OfferRow {
+  company_id: number;
+  company_name?: string;
+  position_category: string;
+  position_name?: string;
+  level: 'intern' | 'graduate' | 'junior' | 'mid' | 'senior' | 'lead';
+  salary_min?: number;
+  salary_max?: number;
+  location?: string;
+}
+
+const POSITIONS: Array<[string, string]> = [
+  ['engineer_backend', '后端开发'],
+  ['engineer_frontend', '前端开发'],
+  ['engineer_algorithm', '算法'],
+  ['engineer_data', '数据工程'],
+  ['product_manager', '产品经理'],
+  ['ui_designer', 'UI 设计'],
+  ['content_operation', '内容运营'],
+  ['user_operation', '用户运营'],
+  ['marketing', '市场营销'],
+  ['sales_b2b', 'B2B 销售'],
+  ['data_analyst', '数据分析'],
+  ['finance_analyst', '财务分析'],
+  ['investment_analyst', '投资分析'],
+  ['consultant', '咨询顾问'],
+  ['hr', '人力资源'],
+];
+
+async function fetchCompanies(query: string): Promise<ComboItem[]> {
+  const q = query.trim();
+  const url = `/api/dict/companies${q ? `?q=${encodeURIComponent(q)}` : ''}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  return (d.items ?? []).map((c: any) => ({
+    id: c.id,
+    label: c.name,
+    hint: `T${c.tier}${c.industry ? ' · ' + c.industry : ''}`,
+  }));
+}
+
+export default function OfferList({
+  value,
+  onChange,
+}: {
+  value: OfferRow[];
+  onChange: (v: OfferRow[]) => void;
+}) {
+  function add() {
+    if (value.length >= 5) return;
+    onChange([
+      ...value,
+      { company_id: 0, position_category: '', level: 'graduate' },
+    ]);
+  }
+
+  function update(i: number, patch: Partial<OfferRow>) {
+    onChange(value.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
+  }
+
+  function remove(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div className="space-y-4">
+      {value.length === 0 && (
+        <p className="text-sm text-muted-foreground">还没有 offer,点击下方按钮添加第一个。</p>
+      )}
+
+      {value.map((o, i) => (
+        <div key={i} className="grid grid-cols-1 gap-3 rounded-lg border p-4 md:grid-cols-6">
+          <div className="md:col-span-2">
+            <Label>公司</Label>
+            <Combobox
+              placeholder="输入公司名(如:字节)"
+              value={o.company_name ?? ''}
+              onValueChange={(s) => update(i, { company_name: s })}
+              selectedId={o.company_id || undefined}
+              fetcher={fetchCompanies}
+              onSelect={(it) => update(i, { company_id: it.id as number, company_name: it.label })}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <Label>岗位</Label>
+            <Select
+              value={o.position_category || undefined}
+              onValueChange={(val) => update(i, { position_category: val })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择岗位" />
+              </SelectTrigger>
+              <SelectContent>
+                {POSITIONS.map(([id, name]) => (
+                  <SelectItem key={id} value={id}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>职级</Label>
+            <Select value={o.level} onValueChange={(val: any) => update(i, { level: val })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="intern">实习</SelectItem>
+                <SelectItem value="graduate">应届</SelectItem>
+                <SelectItem value="junior">初级</SelectItem>
+                <SelectItem value="mid">中级</SelectItem>
+                <SelectItem value="senior">高级</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-end justify-end">
+            <Button variant="ghost" size="icon" onClick={() => remove(i)} aria-label="删除">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div>
+            <Label>年薪下限(元)</Label>
+            <Input
+              type="number"
+              value={o.salary_min ?? ''}
+              onChange={(e) =>
+                update(i, { salary_min: e.target.value ? Number(e.target.value) : undefined })
+              }
+            />
+          </div>
+          <div>
+            <Label>年薪上限(元)</Label>
+            <Input
+              type="number"
+              value={o.salary_max ?? ''}
+              onChange={(e) =>
+                update(i, { salary_max: e.target.value ? Number(e.target.value) : undefined })
+              }
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label>城市</Label>
+            <Input
+              value={o.location ?? ''}
+              placeholder="北京 / 上海 / 杭州..."
+              onChange={(e) => update(i, { location: e.target.value })}
+            />
+          </div>
+        </div>
+      ))}
+
+      {value.length < 5 && (
+        <Button variant="outline" onClick={add}>+ 添加一个 offer</Button>
+      )}
+    </div>
+  );
+}
