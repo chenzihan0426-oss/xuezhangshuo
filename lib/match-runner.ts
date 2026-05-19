@@ -10,9 +10,15 @@ export async function runMatchInBackground(matchId: string, payload: {
   user_offer_db_id: string;
 }) {
   const sb = createSupabaseServiceClient();
+  const t0 = Date.now();
+  console.log(`[match ${matchId}] start offer=${payload.offer.company_name}/${payload.offer.position_category}`);
   try {
     const result = await matchOffer({ background: payload.background, offer: payload.offer });
-    await sb
+    console.log(
+      `[match ${matchId}] matchOffer done in ${Date.now() - t0}ms ` +
+        `(same=${result.groups.same.count} higher=${result.groups.higher.count} lower=${result.groups.lower.count})`,
+    );
+    const { error: upErr } = await sb
       .from('matches')
       .update({
         status: 'completed',
@@ -30,10 +36,20 @@ export async function runMatchInBackground(matchId: string, payload: {
         ],
       })
       .eq('id', matchId);
+    if (upErr) {
+      console.error(`[match ${matchId}] UPDATE completed failed:`, upErr);
+      throw upErr;
+    }
+    console.log(`[match ${matchId}] completed total=${Date.now() - t0}ms`);
   } catch (e) {
-    await sb
+    const msg = e instanceof Error ? e.message : 'unknown';
+    console.error(`[match ${matchId}] FAILED after ${Date.now() - t0}ms:`, msg, e);
+    const { error: failErr } = await sb
       .from('matches')
-      .update({ status: 'failed', error_message: e instanceof Error ? e.message : 'unknown' })
+      .update({ status: 'failed', error_message: msg })
       .eq('id', matchId);
+    if (failErr) {
+      console.error(`[match ${matchId}] UPDATE failed-status also failed:`, failErr);
+    }
   }
 }

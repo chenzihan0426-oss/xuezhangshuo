@@ -110,7 +110,9 @@ export async function POST(req: NextRequest) {
   // 2) 同步并行跑匹配。Vercel Serverless 在 response 返回后会冻结函数,fire-and-forget
   //    的 Promise 跑不完 —— 必须 await。5 个 offer 并行,实测 ~5-10s,maxDuration 60s 够用。
   //    失败的单条 match 不影响其他;runMatchInBackground 内部会把 status 写成 failed。
-  await Promise.allSettled(
+  const tBatch = Date.now();
+  console.log(`[POST /api/match] awaiting ${matchRows.length} matches: ${matchRows.map((m) => m.id).join(',')}`);
+  const settled = await Promise.allSettled(
     matchRows.map((m) =>
       runMatchInBackground(m.id, {
         background: parsed.data.background as UserBackground,
@@ -119,6 +121,8 @@ export async function POST(req: NextRequest) {
       }),
     ),
   );
+  const rejected = settled.filter((s) => s.status === 'rejected').length;
+  console.log(`[POST /api/match] all ${matchRows.length} matches settled in ${Date.now() - tBatch}ms (rejected=${rejected})`);
 
   return NextResponse.json(
     {
