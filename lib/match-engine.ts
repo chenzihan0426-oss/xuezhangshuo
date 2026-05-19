@@ -112,13 +112,20 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
 
 /* ============ helpers ============ */
 
+// 匹配阶段只需要这些列。path_history(JSONB,几 KB)、source_metadata 等都不拉,
+// 等 GET /api/match/[id] 按选中的 id 再去查全量字段,大幅降低单次查询的数据量。
+const CANDIDATE_COLUMNS =
+  'id, school_tier, start_year, first_company_id, first_company_tier, first_industry, ' +
+  'first_position_category, first_level, five_year_company_tier, five_year_industry, ' +
+  'five_year_level, five_year_salary, job_changes, industry_changes, background_vec';
+
 async function fetchCandidates(sb: SupabaseSvc, offer: UserOffer): Promise<SeniorPath[]> {
   const levels = adjacentLevels(offer.level);
   // 优先用 company_id 精确匹配(字典内公司)
   if (offer.company_id) {
     const { data, error } = await sb
       .from('senior_paths')
-      .select('*')
+      .select(CANDIDATE_COLUMNS)
       .eq('first_company_id', offer.company_id)
       .eq('first_position_category', offer.position_category)
       .in('first_level', levels)
@@ -133,7 +140,7 @@ async function fetchCandidates(sb: SupabaseSvc, offer: UserOffer): Promise<Senio
   if (offer.company_tier) {
     const { data, error } = await sb
       .from('senior_paths')
-      .select('*')
+      .select(CANDIDATE_COLUMNS)
       .eq('first_company_tier', offer.company_tier)
       .eq('first_position_category', offer.position_category)
       .in('first_level', levels)
@@ -145,7 +152,7 @@ async function fetchCandidates(sb: SupabaseSvc, offer: UserOffer): Promise<Senio
   // 兜底:只按岗位类目 + 职级
   const { data, error } = await sb
     .from('senior_paths')
-    .select('*')
+    .select(CANDIDATE_COLUMNS)
     .eq('first_position_category', offer.position_category)
     .in('first_level', levels)
     .gte('k_anonymity', MATCH_LIMITS.MIN_K_ANONYMITY)
@@ -158,7 +165,7 @@ async function fetchCandidatesRelaxed(sb: SupabaseSvc, offer: UserOffer): Promis
   // 最宽松:只按岗位大类
   const { data, error } = await sb
     .from('senior_paths')
-    .select('*')
+    .select(CANDIDATE_COLUMNS)
     .eq('first_position_category', offer.position_category)
     .gte('k_anonymity', MATCH_LIMITS.MIN_K_ANONYMITY)
     .limit(MATCH_LIMITS.CANDIDATE_HARD_LIMIT);
