@@ -1,13 +1,5 @@
-/**
- * 异步 match 任务执行器。
- *
- * /api/match 收到请求后:
- *   1) 在 matches 表插入一条 status=computing 的记录,立刻 return match_id
- *   2) `void runMatchInBackground(matchId)` 异步执行
- *   3) 前端轮询 GET /api/match/[id] 直到 status=completed
- *
- * Vercel serverless 下,Promise 不被 await 时仍会执行完(直到函数 maxDuration)。
- */
+// match 任务执行器。必须在 POST /api/match 中 await(Vercel Serverless 在 response 返回后会冻结函数,
+// fire-and-forget 的 Promise 不会跑完)。前端轮询逻辑保留作为兜底。
 import { matchOffer } from './match-engine';
 import { createSupabaseServiceClient } from './supabase-server';
 import type { UserBackground, UserOffer } from './types';

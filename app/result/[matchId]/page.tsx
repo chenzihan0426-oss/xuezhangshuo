@@ -39,5 +39,24 @@ export default async function ResultPage({ params }: { params: { matchId: string
     .maybeSingle();
   if (!match) notFound();
 
-  return <ResultClient matchId={params.matchId} initial={match} />;
+  // 已完成的 match 直接连 paths 一起 SSR 出去,避免客户端再走一轮轮询拿数据
+  let initial: any = match;
+  if (match.status === 'completed') {
+    const allIds = ((match as any).matched_path_ids ?? []) as string[];
+    if (allIds.length) {
+      const { data: paths } = await sb
+        .from('senior_paths')
+        .select(
+          'id, school_tier, major_category, start_year, first_company_tier, first_industry, ' +
+            'first_position_category, first_level, five_year_company_tier, five_year_industry, ' +
+            'five_year_level, five_year_salary, job_changes, industry_changes, path_history',
+        )
+        .in('id', allIds.slice(0, 200));
+      initial = { ...match, paths: paths ?? [] };
+    } else {
+      initial = { ...match, paths: [] };
+    }
+  }
+
+  return <ResultClient matchId={params.matchId} initial={initial} />;
 }

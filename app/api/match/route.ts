@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
     }),
   );
 
-  // 创建 N 个 matches 记录,并行 fire 后台任务
-  const matchIds: string[] = [];
+  // 1) 创建 N 个 matches 占位,拿到 id 先返回给前端,前端立刻能跳到 result/[id](页面会显示骨架屏)
+  const matchRows: { id: string; offer: typeof offerRows[number] }[] = [];
   for (const offer of offerRows) {
     const { data, error } = await svc
       .from('matches')
@@ -104,20 +104,27 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
     if (error) throw error;
-    matchIds.push(data.id as string);
-    void runMatchInBackground(data.id as string, {
-      background: parsed.data.background as UserBackground,
-      offer: offer as UserOffer & { id: string },
-      user_offer_db_id: offer.id,
-    });
+    matchRows.push({ id: data.id as string, offer });
   }
+
+  // 2) 同步并行跑匹配。Vercel Serverless 在 response 返回后会冻结函数,fire-and-forget
+  //    的 Promise 跑不完 —— 必须 await。5 个 offer 并行,实测 ~5-10s,maxDuration 60s 够用。
+  //    失败的单条 match 不影响其他;runMatchInBackground 内部会把 status 写成 failed。
+  await Promise.allSettled(
+    matchRows.map((m) =>
+      runMatchInBackground(m.id, {
+        background: parsed.data.background as UserBackground,
+        offer: m.offer as UserOffer & { id: string },
+        user_offer_db_id: m.offer.id,
+      }),
+    ),
+  );
 
   return NextResponse.json(
     {
-      match_ids: matchIds,
-      status: 'computing',
-      estimated_seconds: 5,
+      match_ids: matchRows.map((m) => m.id),
+      status: 'completed',
     },
-    { status: 202 },
+    { status: 200 },
   );
 }
