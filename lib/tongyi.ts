@@ -59,26 +59,36 @@ export async function embedText(text: string): Promise<number[]> {
     return stableHashVector(text);
   }
   const model = process.env.TONGYI_EMBED_MODEL ?? 'text-embedding-v2';
-  const res = await fetch(`${DASHSCOPE_BASE}/services/embeddings/text-embedding/text-embedding`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      input: { texts: [text] },
-      parameters: { text_type: 'document' },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`tongyi embed failed: ${res.status} ${body}`);
+  // 通义 API 偶发慢响应会把整个 match POST 拖到 Vercel 超时。3s 没回就降级到本地 hash。
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    const res = await fetch(`${DASHSCOPE_BASE}/services/embeddings/text-embedding/text-embedding`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input: { texts: [text] },
+        parameters: { text_type: 'document' },
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      console.warn(`[tongyi] embed http ${res.status}, falling back to stableHashVector`);
+      return stableHashVector(text);
+    }
+    const data = (await res.json()) as EmbedResponse;
+    const raw = data.output.embeddings[0]?.embedding ?? [];
+    return truncateAndNormalize(raw, VECTOR_DIM);
+  } catch (e) {
+    console.warn(`[tongyi] embed timeout/error, falling back to stableHashVector:`, e);
+    return stableHashVector(text);
+  } finally {
+    clearTimeout(timer);
   }
-  const data = (await res.json()) as EmbedResponse;
-  const raw = data.output.embeddings[0]?.embedding ?? [];
-  return truncateAndNormalize(raw, VECTOR_DIM);
 }
 
 /** 批量 embed(注意通义单次最多 25 条) */
