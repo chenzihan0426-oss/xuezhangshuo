@@ -2,11 +2,12 @@
  * POST /api/auth/optin  授权把自己的路径加入未来的样本池
  */
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export async function POST() {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const sb = createSupabaseServerClient();
   const { error } = await sb
     .from('users')
@@ -17,7 +18,8 @@ export async function POST() {
 }
 
 export async function DELETE() {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const sb = createSupabaseServerClient();
   await sb.from('users').update({ opt_in_consent: false, opt_in_at: null }).eq('id', user.id);
   return NextResponse.json({ ok: true });

@@ -110,7 +110,7 @@ export default function BackgroundForm({
       <div className="space-y-1.5">
         <Label>学校层级</Label>
         <Select
-          value={v.school_tier ? String(v.school_tier) : undefined}
+          value={v.school_tier ? String(v.school_tier) : ''}
           onValueChange={(val) => set('school_tier', Number(val))}
         >
           <SelectTrigger>
@@ -127,7 +127,7 @@ export default function BackgroundForm({
       <div className="space-y-1.5">
         <Label>专业大类(用于匹配)</Label>
         <Select
-          value={v.major_category || undefined}
+          value={v.major_category || ''}
           onValueChange={(val) => {
             const m = MAJOR_CATEGORIES.find((x) => x.value === val);
             onChange({ ...v, major_category: val, major_id: m?.default_id ?? 1 });

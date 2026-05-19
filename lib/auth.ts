@@ -36,3 +36,16 @@ export function withAuth<Ctx = unknown>(
  * 旧名兼容:页面默认行为是 redirect,API 路由用 withAuth 替代。
  */
 export const requireUser = requireUserOrRedirect;
+
+/**
+ * API Route 专用:未登录返回 NextResponse 401,登录则返回 user。
+ * 用法:
+ *   const user = await apiRequireUser();
+ *   if (user instanceof NextResponse) return user;
+ *   // 这里 user 一定是登录用户
+ */
+export async function apiRequireUser() {
+  const user = await getServerUser();
+  if (!user) return NextResponse.json({ error: 'auth_required' }, { status: 401 });
+  return user;
+}

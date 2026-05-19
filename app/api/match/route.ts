@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient, createSupabaseServiceClient } from '@/lib/supabase-server';
 import { runMatchInBackground } from '@/lib/match-runner';
 import type { UserBackground, UserOffer } from '@/lib/types';
@@ -56,7 +56,8 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: 'validation', detail: parsed.error.flatten() }, { status: 400 });

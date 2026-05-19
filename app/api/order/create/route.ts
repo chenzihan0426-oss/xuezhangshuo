@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 const PRODUCT_PRICES: Record<string, number> = {
@@ -18,7 +18,8 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: 'validation' }, { status: 400 });
 

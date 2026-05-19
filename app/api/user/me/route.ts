@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export async function GET() {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const sb = createSupabaseServerClient();
   const { data } = await sb.from('users').select('*').eq('id', user.id).maybeSingle();
   return NextResponse.json(data);
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const patch = await req.json();
-  // 只允许更新白名单字段
   const allow = ['school_id', 'school_tier', 'major_id', 'major_category',
     'education_level', 'graduation_year', 'gender', 'gpa_band'];
   const safe: Record<string, unknown> = {};

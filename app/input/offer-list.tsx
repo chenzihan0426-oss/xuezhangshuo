@@ -126,7 +126,7 @@ export default function OfferList({
             <div className="md:col-span-2">
               <Label>公司类型(用于匹配)</Label>
               <Select
-                value={o.company_tier ? String(o.company_tier) : undefined}
+                value={o.company_tier ? String(o.company_tier) : ''}
                 onValueChange={(val) => update(i, { company_tier: Number(val) })}
               >
                 <SelectTrigger>
@@ -149,7 +149,7 @@ export default function OfferList({
             <div className="md:col-span-2">
               <Label>岗位大类(用于匹配)</Label>
               <Select
-                value={o.position_category || undefined}
+                value={o.position_category || ''}
                 onValueChange={(val) => update(i, { position_category: val })}
               >
                 <SelectTrigger>

@@ -2,11 +2,13 @@
  * GET /api/match/[id]
  */
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
+
   const sb = createSupabaseServerClient();
   const { data, error } = await sb
     .from('matches')
@@ -17,7 +19,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // 把 group ids 反查回去,获得真实路径(已脱敏)
   if (data.status === 'completed') {
     const allIds = (data.matched_path_ids ?? []) as string[];
     const { data: paths } = await sb

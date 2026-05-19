@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export async function GET() {
-  const user = await requireUser();
+  const user = await apiRequireUser();
+  if (user instanceof NextResponse) return user;
   const sb = createSupabaseServerClient();
   const { data } = await sb
     .from('matches')
