@@ -48,12 +48,14 @@ export default function InputPage() {
 
   const missing = useMemo<string[]>(() => {
     const out: string[] = [];
-    if (!background?.school_id) out.push('学校(请从下拉列表里点选)');
+    if (!background?.school_name?.trim()) out.push('学校名(可任意填,如「湖北经济学院」)');
+    if (!background?.school_tier) out.push('学校层级(C9 / 985 / 211 / 一本 / 二本)');
     if (!background?.major_category) out.push('专业大类');
     if (offers.length === 0) out.push('至少 1 个 offer');
     offers.forEach((o, i) => {
-      if (!o.company_id) out.push(`Offer ${i + 1}:公司(请从下拉列表里点选)`);
-      if (!o.position_category) out.push(`Offer ${i + 1}:岗位`);
+      if (!o.company_name?.trim()) out.push(`Offer ${i + 1}:公司名`);
+      if (!o.company_tier) out.push(`Offer ${i + 1}:公司类型`);
+      if (!o.position_category) out.push(`Offer ${i + 1}:岗位大类`);
       if (!o.level) out.push(`Offer ${i + 1}:职级`);
     });
     return out;

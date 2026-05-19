@@ -114,10 +114,38 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
 
 async function fetchCandidates(sb: SupabaseSvc, offer: UserOffer): Promise<SeniorPath[]> {
   const levels = adjacentLevels(offer.level);
+  // 优先用 company_id 精确匹配(字典内公司)
+  if (offer.company_id) {
+    const { data, error } = await sb
+      .from('senior_paths')
+      .select('*')
+      .eq('first_company_id', offer.company_id)
+      .eq('first_position_category', offer.position_category)
+      .in('first_level', levels)
+      .gte('k_anonymity', MATCH_LIMITS.MIN_K_ANONYMITY)
+      .limit(MATCH_LIMITS.CANDIDATE_HARD_LIMIT);
+    if (error) throw error;
+    if ((data ?? []).length >= MATCH_LIMITS.MIN_CANDIDATES_BEFORE_RELAX) {
+      return data as unknown as SeniorPath[];
+    }
+  }
+  // 没有 company_id(用户手填),或样本不够 → 用 company_tier 兜底
+  if (offer.company_tier) {
+    const { data, error } = await sb
+      .from('senior_paths')
+      .select('*')
+      .eq('first_company_tier', offer.company_tier)
+      .eq('first_position_category', offer.position_category)
+      .in('first_level', levels)
+      .gte('k_anonymity', MATCH_LIMITS.MIN_K_ANONYMITY)
+      .limit(MATCH_LIMITS.CANDIDATE_HARD_LIMIT);
+    if (error) throw error;
+    return (data ?? []) as unknown as SeniorPath[];
+  }
+  // 兜底:只按岗位类目 + 职级
   const { data, error } = await sb
     .from('senior_paths')
     .select('*')
-    .eq('first_company_id', offer.company_id)
     .eq('first_position_category', offer.position_category)
     .in('first_level', levels)
     .gte('k_anonymity', MATCH_LIMITS.MIN_K_ANONYMITY)
@@ -127,7 +155,7 @@ async function fetchCandidates(sb: SupabaseSvc, offer: UserOffer): Promise<Senio
 }
 
 async function fetchCandidatesRelaxed(sb: SupabaseSvc, offer: UserOffer): Promise<SeniorPath[]> {
-  // 放宽:只看岗位大类 + 同层级公司
+  // 最宽松:只按岗位大类
   const { data, error } = await sb
     .from('senior_paths')
     .select('*')

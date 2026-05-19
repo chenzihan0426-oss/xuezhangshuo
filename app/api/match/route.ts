@@ -19,10 +19,15 @@ const InternshipSchema = z.object({
 });
 
 const BackgroundSchema = z.object({
-  school_id: z.number(),
+  /** 字典内学校 id;手填学校时为 0 */
+  school_id: z.number().default(0),
+  /** 学校名(无论手填还是选中都要有)*/
+  school_name: z.string().min(1, '请填学校名'),
+  /** 学校层级 1-5,必填(决定同/高/低背景划分)*/
   school_tier: z.number().int().min(1).max(5),
-  major_id: z.number(),
-  major_category: z.string(),
+  major_id: z.number().default(0),
+  major_category: z.string().min(1, '请选专业大类'),
+  major_name: z.string().optional(),
   education_level: z.enum(['本科', '硕士', '博士']),
   graduation_year: z.number(),
   gender: z.string().optional(),
@@ -31,9 +36,13 @@ const BackgroundSchema = z.object({
 });
 
 const OfferSchema = z.object({
-  company_id: z.number(),
-  company_name: z.string().optional(),
-  position_category: z.string(),
+  /** 字典内公司 id;手填公司时为 0 */
+  company_id: z.number().default(0),
+  /** 公司名,必填 */
+  company_name: z.string().min(1, '请填公司名'),
+  /** 公司类型 1-7,用于匹配(字典外公司用户必须自填)*/
+  company_tier: z.number().int().min(1).max(7).optional(),
+  position_category: z.string().min(1, '请选岗位大类'),
   position_name: z.string().optional(),
   level: z.enum(['intern', 'graduate', 'junior', 'mid', 'senior', 'lead']),
   salary_min: z.number().optional(),
@@ -66,12 +75,13 @@ export async function POST(req: NextRequest) {
     gpa_band: parsed.data.background.gpa_band,
   }).eq('id', user.id);
 
-  // 落 offers,得到 db id
+  // 落 offers,得到 db id(过滤掉 schema-only 字段)
   const offerRows = await Promise.all(
     parsed.data.offers.map(async (o) => {
+      const { company_tier, ...persistable } = o;
       const { data, error } = await sb
         .from('user_offers')
-        .insert({ ...o, user_id: user.id })
+        .insert({ ...persistable, user_id: user.id })
         .select()
         .single();
       if (error) throw error;

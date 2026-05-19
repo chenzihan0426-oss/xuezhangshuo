@@ -31,6 +31,8 @@ export interface UserOffer {
   id?: string;
   company_id: number;
   company_name?: string;
+  /** 用户输入的公司类型(字典外公司必填),1-7 */
+  company_tier?: number;
   position_category: string;
   position_name?: string;
   level: Level;
@@ -73,6 +75,10 @@ export interface PathHistoryEntry {
   position: string;
   level: Level;
   salary?: number;
+  /** 具体公司名(v1.1 起新增,演示用,基于同 tier 常见示例)*/
+  company_name?: string;
+  /** 具体岗位名(中文)*/
+  position_name?: string;
 }
 
 export interface MatchGroup {

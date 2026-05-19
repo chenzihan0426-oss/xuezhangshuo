@@ -7,9 +7,14 @@ import { Combobox, type ComboItem } from '@/components/ui/combobox';
 import { X } from 'lucide-react';
 
 export interface OfferRow {
+  /** 0 表示字典外,用户手填 */
   company_id: number;
-  company_name?: string;
+  company_name: string;
+  /** 1=大厂 / 2=独角兽 / 3=普通互联网 / 4=传统企业 / 5=国企 / 6=政府 / 7=创业 */
+  company_tier?: number;
+  /** 匹配 key,必须是预定义类目 */
   position_category: string;
+  /** 用户输入的具体岗位名,不影响匹配 */
   position_name?: string;
   level: 'intern' | 'graduate' | 'junior' | 'mid' | 'senior' | 'lead';
   salary_min?: number;
@@ -28,11 +33,24 @@ const POSITIONS: Array<[string, string]> = [
   ['user_operation', '用户运营'],
   ['marketing', '市场营销'],
   ['sales_b2b', 'B2B 销售'],
+  ['sales_b2c', 'B2C 销售'],
   ['data_analyst', '数据分析'],
   ['finance_analyst', '财务分析'],
   ['investment_analyst', '投资分析'],
   ['consultant', '咨询顾问'],
   ['hr', '人力资源'],
+  ['teacher_k12', 'K12 教师'],
+  ['civil_servant', '公务员'],
+];
+
+const COMPANY_TIER_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: '一线大厂(如 字节/阿里/腾讯)' },
+  { value: 2, label: '独角兽 / 二线互联网' },
+  { value: 3, label: '普通互联网公司' },
+  { value: 4, label: '传统企业 / 房地产 / 教培' },
+  { value: 5, label: '国企 / 银行' },
+  { value: 6, label: '政府 / 事业单位' },
+  { value: 7, label: '创业公司 / 初创' },
 ];
 
 async function fetchCompanies(query: string): Promise<ComboItem[]> {
@@ -44,6 +62,7 @@ async function fetchCompanies(query: string): Promise<ComboItem[]> {
     id: c.id,
     label: c.name,
     hint: `T${c.tier}${c.industry ? ' · ' + c.industry : ''}`,
+    tier: c.tier,
   }));
 }
 
@@ -58,7 +77,7 @@ export default function OfferList({
     if (value.length >= 5) return;
     onChange([
       ...value,
-      { company_id: 0, position_category: '', level: 'graduate' },
+      { company_id: 0, company_name: '', position_category: '', level: 'graduate' },
     ]);
   }
 
@@ -76,87 +95,128 @@ export default function OfferList({
         <p className="text-sm text-muted-foreground">还没有 offer,点击下方按钮添加第一个。</p>
       )}
 
-      {value.map((o, i) => (
-        <div key={i} className="grid grid-cols-1 gap-3 rounded-lg border p-4 md:grid-cols-6">
-          <div className="md:col-span-2">
-            <Label>公司</Label>
-            <Combobox
-              placeholder="输入公司名(如:字节)"
-              value={o.company_name ?? ''}
-              onValueChange={(s) => update(i, { company_name: s })}
-              selectedId={o.company_id || undefined}
-              fetcher={fetchCompanies}
-              onSelect={(it) => update(i, { company_id: it.id as number, company_name: it.label })}
-            />
-          </div>
+      {value.map((o, i) => {
+        const isCustomCompany = !o.company_id && !!o.company_name;
+        return (
+          <div key={i} className="grid grid-cols-1 gap-3 rounded-lg border p-4 md:grid-cols-6">
+            <div className="md:col-span-3">
+              <Label>
+                公司
+                {isCustomCompany && (
+                  <span className="ml-2 text-xs text-amber-600">(字典外公司,请选公司类型 →)</span>
+                )}
+              </Label>
+              <Combobox
+                placeholder="输入公司全称(没在列表也可,如:某不知名创业公司)"
+                value={o.company_name}
+                onValueChange={(s) => update(i, { company_name: s })}
+                selectedId={o.company_id || undefined}
+                fetcher={fetchCompanies}
+                emptyHint="字典里没有,直接用你输入的名字即可"
+                onSelect={(it: any) =>
+                  update(i, {
+                    company_id: it.id as number,
+                    company_name: it.label,
+                    company_tier: (it.tier as number) ?? o.company_tier,
+                  })
+                }
+              />
+            </div>
 
-          <div className="md:col-span-2">
-            <Label>岗位</Label>
-            <Select
-              value={o.position_category || undefined}
-              onValueChange={(val) => update(i, { position_category: val })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择岗位" />
-              </SelectTrigger>
-              <SelectContent>
-                {POSITIONS.map(([id, name]) => (
-                  <SelectItem key={id} value={id}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="md:col-span-2">
+              <Label>公司类型(用于匹配)</Label>
+              <Select
+                value={o.company_tier ? String(o.company_tier) : undefined}
+                onValueChange={(val) => update(i, { company_tier: Number(val) })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选公司类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMPANY_TIER_OPTIONS.map((t) => (
+                    <SelectItem key={t.value} value={String(t.value)}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <Label>职级</Label>
-            <Select value={o.level} onValueChange={(val: any) => update(i, { level: val })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="intern">实习</SelectItem>
-                <SelectItem value="graduate">应届</SelectItem>
-                <SelectItem value="junior">初级</SelectItem>
-                <SelectItem value="mid">中级</SelectItem>
-                <SelectItem value="senior">高级</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="flex items-end justify-end md:col-span-1">
+              <Button variant="ghost" size="icon" onClick={() => remove(i)} aria-label="删除">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
 
-          <div className="flex items-end justify-end">
-            <Button variant="ghost" size="icon" onClick={() => remove(i)} aria-label="删除">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+            <div className="md:col-span-2">
+              <Label>岗位大类(用于匹配)</Label>
+              <Select
+                value={o.position_category || undefined}
+                onValueChange={(val) => update(i, { position_category: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择岗位大类" />
+                </SelectTrigger>
+                <SelectContent>
+                  {POSITIONS.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <Label>年薪下限(元)</Label>
-            <Input
-              type="number"
-              value={o.salary_min ?? ''}
-              onChange={(e) =>
-                update(i, { salary_min: e.target.value ? Number(e.target.value) : undefined })
-              }
-            />
+            <div className="md:col-span-2">
+              <Label>具体岗位(可选)</Label>
+              <Input
+                placeholder="如:高级后端工程师 / 国际市场销售"
+                value={o.position_name ?? ''}
+                onChange={(e) => update(i, { position_name: e.target.value })}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Label>职级</Label>
+              <Select value={o.level} onValueChange={(val: any) => update(i, { level: val })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="intern">实习</SelectItem>
+                  <SelectItem value="graduate">应届</SelectItem>
+                  <SelectItem value="junior">初级</SelectItem>
+                  <SelectItem value="mid">中级</SelectItem>
+                  <SelectItem value="senior">高级</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-2">
+              <Label>年薪下限(元)</Label>
+              <Input
+                type="number"
+                value={o.salary_min ?? ''}
+                onChange={(e) =>
+                  update(i, { salary_min: e.target.value ? Number(e.target.value) : undefined })
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>年薪上限(元)</Label>
+              <Input
+                type="number"
+                value={o.salary_max ?? ''}
+                onChange={(e) =>
+                  update(i, { salary_max: e.target.value ? Number(e.target.value) : undefined })
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>城市</Label>
+              <Input
+                value={o.location ?? ''}
+                placeholder="北京 / 上海 / 杭州..."
+                onChange={(e) => update(i, { location: e.target.value })}
+              />
+            </div>
           </div>
-          <div>
-            <Label>年薪上限(元)</Label>
-            <Input
-              type="number"
-              value={o.salary_max ?? ''}
-              onChange={(e) =>
-                update(i, { salary_max: e.target.value ? Number(e.target.value) : undefined })
-              }
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label>城市</Label>
-            <Input
-              value={o.location ?? ''}
-              placeholder="北京 / 上海 / 杭州..."
-              onChange={(e) => update(i, { location: e.target.value })}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {value.length < 5 && (
         <Button variant="outline" onClick={add}>+ 添加一个 offer</Button>

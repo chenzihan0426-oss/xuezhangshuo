@@ -49,34 +49,47 @@ export default function PathsList({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {visible.map((p, i) => (
-            <button
-              key={p.id}
-              onClick={() => setSelected(p)}
-              className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-brand-500 hover:bg-brand-50/30"
-            >
-              <div className="space-y-1">
-                <div className="font-medium">
-                  匿名师兄 #{i + 1} · {p.start_year} 入职
+          {visible.map((p, i) => {
+            const history = (p.path_history ?? []) as Array<any>;
+            const firstCompanyName = history[0]?.company_name;
+            const lastCompanyName = history[history.length - 1]?.company_name;
+            const lastPositionName = history[history.length - 1]?.position_name;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelected(p)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-brand-500 hover:bg-brand-50/30"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium">匿名师兄 #{i + 1}</span>
+                    <span className="text-xs text-muted-foreground">· {p.start_year} 入职</span>
+                    <span className="font-bold text-brand-700">
+                      {firstCompanyName ?? COMPANY_TIER_LABELS[p.first_company_tier ?? 5]}
+                    </span>
+                    <span className="text-xs text-muted-foreground">→ 5 年后</span>
+                    <span className="font-bold text-foreground">
+                      {lastCompanyName ?? COMPANY_TIER_LABELS[p.five_year_company_tier ?? 5]}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                    <Badge variant="outline">
+                      {lastPositionName ?? p.first_position_category}
+                    </Badge>
+                    <Badge variant="secondary">
+                      {LEVEL_LABELS[p.five_year_level ?? 'mid']}
+                    </Badge>
+                    <Badge variant="secondary">{formatSalary(p.five_year_salary)}</Badge>
+                    {p.job_changes > 0 && <Badge variant="warning">跳 {p.job_changes} 次</Badge>}
+                    {p.industry_changes > 0 && (
+                      <Badge variant="warning">换行 {p.industry_changes} 次</Badge>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
-                  <Badge variant="outline">起:{COMPANY_TIER_LABELS[p.first_company_tier ?? 5]}</Badge>
-                  <Badge variant="outline">{INDUSTRY_LABEL[p.first_industry] ?? p.first_industry}</Badge>
-                  <Badge variant="outline">{LEVEL_LABELS[p.first_level] ?? p.first_level}</Badge>
-                  <span>→</span>
-                  <Badge variant="secondary">
-                    5 年后 · {LEVEL_LABELS[p.five_year_level ?? 'mid']}
-                  </Badge>
-                  <Badge variant="secondary">{formatSalary(p.five_year_salary)}</Badge>
-                  {p.job_changes > 0 && <Badge variant="warning">跳 {p.job_changes} 次</Badge>}
-                  {p.industry_changes > 0 && (
-                    <Badge variant="warning">换行 {p.industry_changes} 次</Badge>
-                  )}
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-            </button>
-          ))}
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              </button>
+            );
+          })}
 
           {locked > 0 && (
             <button
