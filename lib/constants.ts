@@ -15,6 +15,33 @@ export const SCHOOL_TIER_LABELS: Record<number, string> = {
   5: '二本及以下',
 };
 
+/**
+ * 各院校层级的代表院校(取自 schools 字典,演示用)。
+ * 师兄路径出于 k-匿名脱敏只存 school_tier,这里按层级分配一个真实代表院校名展示,
+ * 做法与"公司名按公司层级分配代表示例"一致 —— 不是声称某个真实个人来自该校。
+ */
+export const SCHOOL_NAMES_BY_TIER: Record<number, string[]> = {
+  1: ['清华大学', '北京大学', '复旦大学', '上海交通大学', '浙江大学', '南京大学', '中国科学技术大学', '哈尔滨工业大学', '西安交通大学'],
+  2: ['武汉大学', '华中科技大学', '中山大学', '北京师范大学', '同济大学', '北京航空航天大学', '四川大学'],
+  3: ['苏州大学', '郑州大学', '暨南大学', '西南大学', '南昌大学'],
+  4: ['上海大学', '浙江工业大学', '华南农业大学', '江苏大学', '长沙理工大学'],
+  5: ['广州大学', '广东工业大学', '武汉工程大学', '重庆工商大学', '湖北经济学院'],
+};
+
+/** 简单稳定 hash(同一 path 永远落到同一个学校,不依赖 crypto,前端可用) */
+function stableHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** 按 path id + 院校层级,确定性分配一个该层级的代表院校名 */
+export function schoolNameFor(pathId: string, tier: number | undefined): string {
+  const pool = SCHOOL_NAMES_BY_TIER[tier ?? 0];
+  if (!pool || !pool.length) return SCHOOL_TIER_LABELS[tier ?? 0] ?? '院校';
+  return pool[stableHash(pathId) % pool.length];
+}
+
 export const COMPANY_TIER_LABELS: Record<number, string> = {
   1: '一线大厂',
   2: '独角兽',
