@@ -67,7 +67,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const { data: paths } = await sb
       .from('senior_paths')
       .select(
-        'id, school_tier, major_category, start_year, first_company_tier, first_industry, ' +
+        'id, school_tier, education_level, major_category, start_year, first_company_tier, first_industry, ' +
           'first_position_category, first_level, five_year_company_tier, five_year_industry, ' +
           'five_year_level, five_year_salary, job_changes, industry_changes, path_history',
       )

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { COMPANY_TIER_LABELS, LEVEL_LABELS } from '@/lib/constants';
+import { COMPANY_TIER_LABELS, LEVEL_LABELS, SCHOOL_TIER_LABELS } from '@/lib/constants';
 import { formatSalary } from '@/lib/utils';
 import type { SeniorPath } from '@/lib/types';
 import PathDetailModal from './path-detail-modal';
@@ -72,6 +72,10 @@ export default function PathsList({
                       {isStartup && <span className="mr-1" aria-label="创业">🚀</span>}
                       匿名师兄 #{i + 1}
                     </span>
+                    {p.school_tier && (
+                      <Badge variant="outline">{SCHOOL_TIER_LABELS[p.school_tier]}</Badge>
+                    )}
+                    {p.education_level && <Badge variant="outline">{p.education_level}</Badge>}
                     {isStartup && <Badge variant="warning">创业起步</Badge>}
                     <span className="text-xs text-muted-foreground">· {p.start_year} 入职</span>
                     <span className="font-bold text-brand-700">

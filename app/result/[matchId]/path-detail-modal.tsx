@@ -7,7 +7,7 @@
 'use client';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { COMPANY_TIER_LABELS, LEVEL_LABELS } from '@/lib/constants';
+import { COMPANY_TIER_LABELS, LEVEL_LABELS, SCHOOL_TIER_LABELS } from '@/lib/constants';
 import { formatSalary } from '@/lib/utils';
 import type { PathHistoryEntry, SeniorPath } from '@/lib/types';
 
@@ -60,6 +60,13 @@ export default function PathDetailModal({
         </DialogHeader>
 
         <div className="space-y-3">
+          {/* 师兄背景:毕业院校层级 + 学历 */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">毕业背景:</span>
+            {path.school_tier && <Badge variant="outline">{SCHOOL_TIER_LABELS[path.school_tier]}</Badge>}
+            {path.education_level && <Badge variant="outline">{path.education_level}</Badge>}
+          </div>
+
           {/* 概要 */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <Stat label="5 年后职级" value={LEVEL_LABELS[path.five_year_level ?? 'mid']} />
