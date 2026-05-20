@@ -10,6 +10,7 @@ async function main() {
   const brief = await generateCompanyBrief({ company, industry, position });
   console.log(`[probe] done in ${Date.now() - t0}ms | found=${brief.found} degraded=${brief.degraded ?? '-'}`);
   console.log('salary_range:', JSON.stringify(brief.salary_range, null, 2));
+  console.log('correction:', JSON.stringify(brief.correction, null, 2));
   console.log(`events=${brief.events.length} sources=${brief.sources?.length ?? 0}`);
 }
 

@@ -140,7 +140,8 @@ export async function generateCompanyBrief(input: {
     '3. 无法确认日期写 null,不编造。\n' +
     '4. career_outlook 只基于已列 events 做一句话谨慎解读,不引入新事实。\n' +
     '5. salary_range:综合检索到的薪资信息(脉脉/看准网/OfferShow/职级薪资等)与该岗位的行业普遍水平,给应届起薪和工作约 5 年后的年薪区间(单位:万元/年,数字不带单位)。优先用检索到的真实数据;若真实数据不足,可给一个保守、符合常识的行业经验区间,并在 basis 注明"综合市场公开数据估算"。区间必须符合常识、不得离谱。完全无法判断时才设为 null。\n' +
-    '只输出 JSON,不要任何多余文字:{"found":bool,"summary":string,"events":[{"title":string,"date":string|null,"source_url":string}],"career_outlook":string,"salary_range":{"fresh_low":number,"fresh_high":number,"senior_low":number,"senior_high":number,"basis":string}|null}';
+    '6. correction:基于检索到的真实信息,判断「这家公司」相比所在行业的通用水平,环境是更好还是更差,给出一个调整系数 company_adjustment(数字,0.85=明显更差如裁员/衰退/业务收缩,1.0=与行业持平或无明确信息,1.15=明显更好如逆势增长/大规模扩招/新业务爆发)。rationale 用一句话给依据(基于已检索到的事实,不编)。dimension_notes 对行业景气(industry)、AI 替代风险(ai_risk)、政策影响(policy)各给一句真实备注(没有相关信息就省略该项)。无任何可靠信息时 company_adjustment=1.0。\n' +
+    '只输出 JSON,不要任何多余文字:{"found":bool,"summary":string,"events":[{"title":string,"date":string|null,"source_url":string}],"career_outlook":string,"salary_range":{"fresh_low":number,"fresh_high":number,"senior_low":number,"senior_high":number,"basis":string}|null,"correction":{"company_adjustment":number,"rationale":string,"dimension_notes":{"industry":string,"ai_risk":string,"policy":string}}|null}';
   const userMsg =
     `请检索并总结「${input.company}」(${industryLabel}行业)近 12 个月的重要动态:经营状况、裁员/扩招、融资、相关政策,以及对应届生 5 年职业发展的影响。` +
     (positionLabel
@@ -204,12 +205,24 @@ export async function generateCompanyBrief(input: {
         ? sr
         : null;
 
+    // 环境精化:company_adjustment 限幅 [0.85, 1.15],非法则中性 1.0
+    const corr = parsed.correction;
+    let validCorrection: AiBrief['correction'] = null;
+    if (corr && typeof corr.company_adjustment === 'number' && isFinite(corr.company_adjustment)) {
+      validCorrection = {
+        company_adjustment: Math.min(1.15, Math.max(0.85, corr.company_adjustment)),
+        rationale: corr.rationale ?? '',
+        dimension_notes: corr.dimension_notes ?? undefined,
+      };
+    }
+
     return {
       found: !!parsed.found && (filteredEvents.length > 0 || !!parsed.summary),
       summary: parsed.summary ?? '',
       events: filteredEvents,
       career_outlook: parsed.career_outlook,
       salary_range: validSalary,
+      correction: validCorrection,
       sources,
       generated_at: new Date().toISOString(),
     };
@@ -232,6 +245,11 @@ function parseBriefJson(content: string): {
     senior_low: number;
     senior_high: number;
     basis: string;
+  } | null;
+  correction?: {
+    company_adjustment: number;
+    rationale: string;
+    dimension_notes?: { industry?: string; ai_risk?: string; policy?: string };
   } | null;
 } | null {
   if (!content) return null;

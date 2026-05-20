@@ -73,7 +73,11 @@ export default function CorrectionPanel({
   /** AI 检索重试 */
   onAiRetry?: () => void;
 }) {
-  const delta = corrected - original;
+  // AI 公司级精化:校正分 = 规则基线 × AI 调整系数(限幅 [0.85,1.15],无 AI 则 1.0)
+  const aiCorrection = aiBrief?.correction ?? null;
+  const aiAdjustment = aiCorrection?.company_adjustment ?? 1;
+  const displayCorrected = Math.round(Math.min(100, Math.max(0, corrected * aiAdjustment)) * 10) / 10;
+  const delta = displayCorrected - original;
   const isDown = delta < 0;
   const cohort = factors.cohort ?? 1;
   const personal = factors.personal_boost ?? 1;
@@ -90,7 +94,7 @@ export default function CorrectionPanel({
         barWidth: 60,
         data: [
           { value: original, itemStyle: { color: '#94a3b8' } },
-          { value: corrected, itemStyle: { color: isDown ? '#dc2626' : '#16a34a' } },
+          { value: displayCorrected, itemStyle: { color: isDown ? '#dc2626' : '#16a34a' } },
         ],
         label: { show: true, position: 'top', formatter: '{c}' },
       },
@@ -116,10 +120,12 @@ export default function CorrectionPanel({
               />
             )}
           </div>
-          <Badge variant={isDown ? 'destructive' : 'success'}>
-            {delta > 0 ? '+' : ''}
-            {delta.toFixed(1)} 分
-          </Badge>
+          {!aiLoading && (
+            <Badge variant={isDown ? 'destructive' : 'success'}>
+              {delta > 0 ? '+' : ''}
+              {delta.toFixed(1)} 分
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -128,7 +134,16 @@ export default function CorrectionPanel({
           <AiBriefContent brief={aiBrief ?? null} loading={!!aiLoading} onRetry={onAiRetry ?? (() => {})} />
         </div>
 
-        {/* ② 环境校正结论(规则计算,秒出,不被 AI 联网阻塞) */}
+        {/* ② 环境校正结论(等 AI 完成后一起出;校正分已结合 AI 公司级精化) */}
+        {aiLoading ? (
+          <div className="space-y-2">
+            <div className="h-4 w-1/3 animate-pulse rounded bg-amber-100" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="h-48 animate-pulse rounded bg-amber-50" />
+              <div className="h-48 animate-pulse rounded bg-amber-50" />
+            </div>
+          </div>
+        ) : (
         <div className="grid gap-6 md:grid-cols-2">
           <ReactECharts option={option} style={{ height: 220 }} />
           <div className="space-y-3 text-sm">
@@ -198,6 +213,23 @@ export default function CorrectionPanel({
               </div>
             );
           })()}
+          {aiCorrection && (
+            <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3 text-xs">
+              <div className="mb-1 font-semibold text-sky-800">
+                🤖 AI 实时分析
+                {aiAdjustment !== 1 &&
+                  `(据此${aiAdjustment > 1 ? '上调' : '下调'} ${Math.abs((aiAdjustment - 1) * 100).toFixed(0)}%)`}
+              </div>
+              {aiCorrection.rationale && <p className="text-muted-foreground">{aiCorrection.rationale}</p>}
+              {aiCorrection.dimension_notes && (
+                <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                  {aiCorrection.dimension_notes.industry && <li>· 行业:{aiCorrection.dimension_notes.industry}</li>}
+                  {aiCorrection.dimension_notes.ai_risk && <li>· AI 风险:{aiCorrection.dimension_notes.ai_risk}</li>}
+                  {aiCorrection.dimension_notes.policy && <li>· 政策:{aiCorrection.dimension_notes.policy}</li>}
+                </ul>
+              )}
+            </div>
+          )}
           <p className="rounded-md bg-white p-3 text-sm">{explanation}</p>
           {personal !== 1 && (
             <p className="text-[10px] leading-snug text-muted-foreground">
@@ -207,6 +239,7 @@ export default function CorrectionPanel({
           )}
         </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );

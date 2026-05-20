@@ -20,6 +20,11 @@ export interface AiBrief {
     senior_high: number;
     basis: string;
   } | null;
+  correction?: {
+    company_adjustment: number;
+    rationale: string;
+    dimension_notes?: { industry?: string; ai_risk?: string; policy?: string };
+  } | null;
   sources?: { title: string; url: string; site_name?: string }[];
   degraded?: 'no_key' | 'timeout' | 'error';
 }

@@ -187,6 +187,15 @@ export interface AiBrief {
     /** 依据说明(数据来自哪类来源) */
     basis: string;
   } | null;
+  /**
+   * 公司级环境精化:AI 据真实信息判断这家公司相比行业通用水平的环境调整。
+   * company_adjustment ∈ [0.85, 1.15];校正分 = 规则基线 × 此系数。
+   */
+  correction?: {
+    company_adjustment: number;
+    rationale: string;
+    dimension_notes?: { industry?: string; ai_risk?: string; policy?: string };
+  } | null;
   /** 真实联网来源列表(取自通义 search_info) */
   sources?: { title: string; url: string; site_name?: string }[];
   /** 降级原因:无 key / 超时 / 失败 */
