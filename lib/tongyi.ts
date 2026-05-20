@@ -147,9 +147,10 @@ export async function generateCompanyBrief(input: {
       ? `\n另外检索该公司「${positionLabel}」岗位的真实市场薪资:应届起薪、工作约 5 年后的年薪水平,给出区间(万元/年)。`
       : '');
 
-  // 联网检索 + 生成比纯生成慢得多,给到 25s(brief route maxDuration=30s 兜底)
+  // 联网检索 + 生成本就慢;Vercel 服务器在海外,到阿里云(中国)还要跨境,更慢。
+  // 给到 55s(brief route maxDuration=60s 兜底),尽量在函数被杀前拿到结果。
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 25000);
+  const timer = setTimeout(() => ctrl.abort(), 55000);
   try {
     const res = await fetch(`${DASHSCOPE_BASE}/services/aigc/text-generation/generation`, {
       method: 'POST',

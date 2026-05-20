@@ -45,7 +45,7 @@ export function AiBriefContent({
     return (
       <div>
         {header}
-        <p className="text-sm text-muted-foreground">正在联网检索该公司近期动态与市场薪资…</p>
+        <p className="text-sm text-muted-foreground">正在联网检索该公司近期动态与市场薪资…(约 30-60 秒,请稍候)</p>
         <div className="mt-3 space-y-2">
           <div className="h-3 w-3/4 animate-pulse rounded bg-sky-100" />
           <div className="h-3 w-1/2 animate-pulse rounded bg-sky-100" />

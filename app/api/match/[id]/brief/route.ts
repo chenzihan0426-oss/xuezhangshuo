@@ -12,7 +12,10 @@ import { createSupabaseServerClient, createSupabaseServiceClient } from '@/lib/s
 import { generateCompanyBrief } from '@/lib/tongyi';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
+// 函数尽量跑在离阿里云(中国)近的区域,降低跨境联网延迟。
+// Hobby 计划会忽略此设置(仍用默认区域),Pro 计划生效。
+export const preferredRegion = ['hkg1', 'sin1'];
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const user = await apiRequireUser();

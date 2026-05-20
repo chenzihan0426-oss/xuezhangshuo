@@ -116,12 +116,10 @@ export default function CorrectionPanel({
               />
             )}
           </div>
-          {!aiLoading && (
-            <Badge variant={isDown ? 'destructive' : 'success'}>
-              {delta > 0 ? '+' : ''}
-              {delta.toFixed(1)} 分
-            </Badge>
-          )}
+          <Badge variant={isDown ? 'destructive' : 'success'}>
+            {delta > 0 ? '+' : ''}
+            {delta.toFixed(1)} 分
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -130,16 +128,7 @@ export default function CorrectionPanel({
           <AiBriefContent brief={aiBrief ?? null} loading={!!aiLoading} onRetry={onAiRetry ?? (() => {})} />
         </div>
 
-        {/* ② 基于环境因子的校正结论(等 AI 事实出来再一起呈现,避免割裂/跳变) */}
-        {aiLoading ? (
-          <div className="space-y-2">
-            <div className="h-4 w-1/3 animate-pulse rounded bg-amber-100" />
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="h-48 animate-pulse rounded bg-amber-50" />
-              <div className="h-48 animate-pulse rounded bg-amber-50" />
-            </div>
-          </div>
-        ) : (
+        {/* ② 环境校正结论(规则计算,秒出,不被 AI 联网阻塞) */}
         <div className="grid gap-6 md:grid-cols-2">
           <ReactECharts option={option} style={{ height: 220 }} />
           <div className="space-y-3 text-sm">
@@ -171,7 +160,14 @@ export default function CorrectionPanel({
             </div>
           )}
           {(() => {
-            // 校正区块本身已等 AI 加载完才渲染,这里直接判定来源:有 AI 用 AI,否则 mock
+            // AI 联网核对市场薪资期间,先占位不显示 mock 数字,避免"错数字→对数字"跳变
+            if (aiLoading && !aiSeniorSalary) {
+              return (
+                <div className="rounded-md bg-white p-3 text-xs text-muted-foreground">
+                  正在联网核对市场薪资水平…(约 30-60 秒)
+                </div>
+              );
+            }
             const useAi = !!aiSeniorSalary;
             const low = useAi ? aiSeniorSalary!.low : salaryP10;
             const mid = useAi ? Math.round((aiSeniorSalary!.low + aiSeniorSalary!.high) / 2) : salaryP50;
@@ -211,7 +207,6 @@ export default function CorrectionPanel({
           )}
         </div>
         </div>
-        )}
       </CardContent>
     </Card>
   );
