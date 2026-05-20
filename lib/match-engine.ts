@@ -163,6 +163,8 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
       offer_industry: input.offer.first_industry && input.offer.first_industry !== 'other'
         ? input.offer.first_industry
         : offerIndustry,
+      // 用户真实院校档次:供前端"同/高/低"分组 + 列表按院校接近度排序
+      user_school_tier: input.background.school_tier,
     },
   };
 }

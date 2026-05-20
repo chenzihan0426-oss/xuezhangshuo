@@ -156,6 +156,8 @@ export interface CorrectionResult {
     | 'position_only';
   /** matchOffer 推断出的 offer 行业,供 AI 联网简报使用 */
   offer_industry?: string;
+  /** 用户真实院校档次(1-5),供前端分组基准 + 师兄列表按院校接近度排序 */
+  user_school_tier?: number;
   /** AI 联网检索的公司/行业简报(异步生成后缓存于此) */
   ai_brief?: AiBrief;
 }

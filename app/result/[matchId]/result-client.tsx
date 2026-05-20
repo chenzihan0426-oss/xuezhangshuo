@@ -78,14 +78,15 @@ export default function ResultClient({
   const allPaths: SeniorPath[] = useMemo(() => match?.paths ?? [], [match?.paths]);
   const userOffer = match?.user_offers;
 
-  // 用 user 的 school_tier 拆三组(以 same 组中位 tier 为基准)
+  // 分组基准 = 用户真实院校档次(优先);旧 match 没存时回退到候选集众数
+  const userSchoolTier: number | undefined = match?.correction_data?.user_school_tier;
   const baselineTier = useMemo(() => {
+    if (userSchoolTier) return userSchoolTier;
     if (!allPaths.length) return 3;
-    // 取出现最频繁的 school_tier 作为基准
     const counter = new Map<number, number>();
     for (const p of allPaths) counter.set(p.school_tier, (counter.get(p.school_tier) ?? 0) + 1);
     return [...counter.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 3;
-  }, [allPaths]);
+  }, [allPaths, userSchoolTier]);
 
   // 先应用 filter,再拆三组
   const filtered = useMemo(() => applyFilters(allPaths, filters), [allPaths, filters]);
@@ -93,6 +94,14 @@ export default function ResultClient({
     () => splitGroups(filtered, baselineTier),
     [filtered, baselineTier],
   );
+
+  // 师兄列表按"院校档次接近用户"排序:同档次优先,参考价值最高的排前面
+  const listPaths = useMemo(() => {
+    const base = userSchoolTier ?? baselineTier;
+    return [...filtered].sort(
+      (a, b) => Math.abs((a.school_tier ?? 3) - base) - Math.abs((b.school_tier ?? 3) - base),
+    );
+  }, [filtered, userSchoolTier, baselineTier]);
 
   // 缩放系数:把 mock 师兄薪资整体抬到 AI 市场量级(仅展示,保留分布形状)
   const salaryScale = useMemo(() => {
@@ -266,9 +275,9 @@ export default function ResultClient({
 
       {/* 单条路径列表 */}
       <PathsList
-        paths={filtered}
+        paths={listPaths}
         visibleCount={visiblePathCount}
-        totalCount={filtered.length}
+        totalCount={listPaths.length}
         onUpgradeClick={() => setPaywallOpen(true)}
         salaryScale={salaryScale}
       />
