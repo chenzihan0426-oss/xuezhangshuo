@@ -42,6 +42,8 @@ const OfferSchema = z.object({
   company_name: z.string().min(1, '请填公司名'),
   /** 公司类型 1-7,用于匹配(字典外公司用户必须自填)*/
   company_tier: z.number().int().min(1).max(7).optional(),
+  /** 行业(字典内自动带,字典外用户必填)*/
+  first_industry: z.string().optional(),
   position_category: z.string().min(1, '请选岗位大类'),
   position_name: z.string().optional(),
   level: z.enum(['intern', 'graduate', 'junior', 'mid', 'senior', 'lead']),
@@ -76,16 +78,62 @@ export async function POST(req: NextRequest) {
     gpa_band: parsed.data.background.gpa_band,
   }).eq('id', user.id);
 
-  // 落 offers,得到 db id(过滤掉 schema-only 字段)
+  // 落 offers,得到 db id(过滤掉 schema-only 字段:company_tier / first_industry
+  // 都是匹配用的临时字段,user_offers 表 schema 不持久化)
+  //
+  // 兜底校验:用户前端可能有草稿污染 —— company_id 指向 A 公司,但 company_name 是 B。
+  // 如果 user 输入的 name 跟 company_id 字典里的 name 不一致(且不为空),就强制走字典外路径,
+  // 防止 fetchCandidates L1 错误命中(典型:输入「星巴克」但 company_id 还是阿里的)
+  const allCompanyIds = parsed.data.offers
+    .map((o) => o.company_id)
+    .filter((id): id is number => !!id && id > 0);
+  const companyDict: Record<number, { name: string; tier: number | null; industry: string | null }> = {};
+  if (allCompanyIds.length) {
+    const { data: companies } = await svc
+      .from('companies')
+      .select('id, name, tier, industry')
+      .in('id', allCompanyIds);
+    for (const c of companies ?? []) {
+      companyDict[(c as any).id] = {
+        name: (c as any).name,
+        tier: (c as any).tier ?? null,
+        industry: (c as any).industry ?? null,
+      };
+    }
+  }
+  const normalizedOffers = parsed.data.offers.map((o) => {
+    if (o.company_id && o.company_id > 0) {
+      const dict = companyDict[o.company_id];
+      const dictName = dict?.name?.trim() ?? '';
+      const userName = o.company_name?.trim() ?? '';
+      // 如果字典 name 跟用户输入对不上,降级为字典外(清空 id 和 industry,
+      // 因为 industry 极有可能是从错绑定的公司自动填的)
+      if (dictName && userName && dictName !== userName) {
+        console.warn(`[match POST] company_id ${o.company_id}(${dictName}) ≠ name "${userName}",降级为字典外`);
+        return { ...o, company_id: 0, first_industry: undefined };
+      }
+      // 一致:自动补齐 tier / industry(避免前端漏带)
+      return {
+        ...o,
+        company_tier: o.company_tier ?? (dict?.tier ?? undefined),
+        first_industry: o.first_industry ?? (dict?.industry ?? undefined),
+      };
+    }
+    return o;
+  });
+
   const offerRows = await Promise.all(
-    parsed.data.offers.map(async (o) => {
-      const { company_tier, ...persistable } = o;
+    normalizedOffers.map(async (o) => {
+      const { company_tier: _ct, first_industry: _fi, ...persistable } = o;
+      void _ct;
+      void _fi;
       const { data, error } = await sb
         .from('user_offers')
         .insert({ ...persistable, user_id: user.id })
         .select()
         .single();
       if (error) throw error;
+      // 把 company_tier / first_industry 保留在返回对象里,match-engine 还要用
       return { ...o, id: data.id as string };
     }),
   );

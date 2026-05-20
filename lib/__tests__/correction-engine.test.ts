@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   aiFactor,
   baseScore,
+  cohortFactor,
   correctPath,
   generateExplanation,
   industryFactor,
+  offerSalaryFactor,
+  personalBoostFactor,
   policyFactor,
 } from '../correction-engine';
-import type { SeniorPath } from '../types';
+import type { SeniorPath, UserBackground } from '../types';
 
 function fakePath(overrides: Partial<SeniorPath> = {}): SeniorPath {
   return {
@@ -101,11 +104,13 @@ describe('correctPath integration', () => {
     expect(result.corrected).toBeLessThan(result.original * 0.5);
   });
   it('稳定行业不大幅校正', () => {
+    // tech_hardware 2020 → 2026:industry 1.20 + cohort 1.15(硬件红利后置)+ AI 因子
+    // 加 cohort 后差幅自然扩大,允许 ≤ 25 内
     const result = correctPath(
       fakePath({ start_year: 2020, first_industry: 'tech_hardware' }),
       2026,
     );
-    expect(Math.abs(result.corrected - result.original)).toBeLessThan(20);
+    expect(Math.abs(result.corrected - result.original)).toBeLessThanOrEqual(25);
   });
 });
 
@@ -125,5 +130,92 @@ describe('generateExplanation', () => {
   it('fallback when nothing notable', () => {
     const e = generateExplanation(1.0, 0.3, []);
     expect(e).toMatch(/相对稳定/);
+  });
+  it('mentions cohort when significantly off-baseline', () => {
+    const e = generateExplanation(1.0, 0.3, [], 0.6);
+    expect(e).toMatch(/红利期|时代红利/);
+  });
+  it('mentions personal boost when significantly above 1', () => {
+    const e = generateExplanation(1.0, 0.3, [], 1.0, 1.12);
+    expect(e).toMatch(/起点|学校/);
+  });
+  it('mentions offer salary advantage when high', () => {
+    const e = generateExplanation(1.0, 0.3, [], 1.0, 1.0, 1.25);
+    expect(e).toMatch(/Offer|起薪/);
+  });
+});
+
+describe('cohortFactor', () => {
+  it('互联网 2020 师兄 / 2026 用户:用户起步更难,cohort < 1', () => {
+    const v = cohortFactor('internet', 2020, 2026);
+    expect(v).toBeLessThan(1);
+  });
+  it('创业 2021 师兄(双创红利)/ 2026 用户:用户更难,cohort < 1', () => {
+    const v = cohortFactor('startup', 2021, 2026);
+    expect(v).toBeLessThan(1);
+  });
+  it('未知行业返回 1.0', () => {
+    expect(cohortFactor('non_existent_industry', 2020, 2026)).toBe(1.0);
+  });
+  it('clamp 边界 [0.5, 1.5]', () => {
+    const v = cohortFactor('education_training', 2020, 2026);
+    expect(v).toBeGreaterThanOrEqual(0.5);
+    expect(v).toBeLessThanOrEqual(1.5);
+  });
+});
+
+describe('personalBoostFactor', () => {
+  const minimalBg = (overrides: Partial<UserBackground> = {}): UserBackground => ({
+    school_id: 0,
+    school_tier: 4,
+    major_id: 0,
+    major_category: 'computer_science',
+    education_level: '本科',
+    graduation_year: 2026,
+    gpa_band: 'unknown',
+    ...overrides,
+  });
+
+  it('普通本科基线 = 1.0', () => {
+    const r = personalBoostFactor(minimalBg());
+    expect(r.factor).toBe(1.0);
+  });
+  it('C9 + 3.5+ + 长实习 → 明显加成', () => {
+    const r = personalBoostFactor(
+      minimalBg({
+        school_tier: 1,
+        gpa_band: '3.5+',
+        internships: [{ company_id: 1, position_category: 'pm', duration_months: 6 }],
+      }),
+    );
+    expect(r.factor).toBeGreaterThan(1.15);
+    expect(r.factor).toBeLessThanOrEqual(1.3);
+  });
+  it('二本 + <3.0 → 折扣', () => {
+    const r = personalBoostFactor(minimalBg({ school_tier: 5, gpa_band: '<3.0' }));
+    expect(r.factor).toBeLessThan(1.0);
+  });
+  it('undefined background 返回 1', () => {
+    expect(personalBoostFactor(undefined).factor).toBe(1.0);
+  });
+});
+
+describe('offerSalaryFactor', () => {
+  it('user 30 万 vs baseline 20 万 → factor ≈ 1.3 (capped)', () => {
+    const v = offerSalaryFactor(300_000, 200_000);
+    expect(v).toBe(1.3); // clamp 上限
+  });
+  it('user 15 万 vs baseline 20 万 → factor ≈ 0.8 (capped)', () => {
+    const v = offerSalaryFactor(150_000, 200_000);
+    expect(v).toBe(0.8); // clamp 下限
+  });
+  it('user 22 万 vs baseline 20 万 → factor ≈ 1.1', () => {
+    const v = offerSalaryFactor(220_000, 200_000);
+    expect(v).toBeCloseTo(1.1, 1);
+  });
+  it('缺失值返回 1.0', () => {
+    expect(offerSalaryFactor(undefined, 200_000)).toBe(1.0);
+    expect(offerSalaryFactor(200_000, undefined)).toBe(1.0);
+    expect(offerSalaryFactor(200_000, 0)).toBe(1.0);
   });
 });

@@ -22,15 +22,34 @@ async function main() {
   }
   const userId = (anyOffer as any).user_id as string;
 
-  // 插一条 user_offers(模拟用户提交腾讯 PM graduate)
+  // probe 场景:从命令行参数选 'starbucks'(字典外)或默认 '腾讯'(字典内)
+  const isStarbucks = process.argv.includes('--starbucks');
+  const offerProfile = isStarbucks
+    ? {
+        company_id: 0, // 字典外
+        company_name: '星巴克',
+        company_tier: 4,
+        first_industry: 'other', // 用户选了「其他」
+        position_category: 'product_manager',
+        level: 'graduate' as const,
+      }
+    : {
+        company_id: 3,
+        company_name: '腾讯',
+        company_tier: 1,
+        first_industry: 'internet',
+        position_category: 'product_manager',
+        level: 'graduate' as const,
+      };
+
   const { data: offerRow, error: offerErr } = await svc
     .from('user_offers')
     .insert({
       user_id: userId,
-      company_id: 3,
-      company_name: '腾讯',
-      position_category: 'product_manager',
-      level: 'graduate',
+      company_id: offerProfile.company_id,
+      company_name: offerProfile.company_name,
+      position_category: offerProfile.position_category,
+      level: offerProfile.level,
     })
     .select()
     .single();
@@ -39,7 +58,7 @@ async function main() {
     process.exit(1);
   }
   const offerId = (offerRow as any).id as string;
-  console.log(`[probe] 创建 user_offer ${offerId}`);
+  console.log(`[probe] 创建 user_offer ${offerId} (${offerProfile.company_name})`);
 
   // 插一条 matches(status=computing)
   const { data: matchRow, error: matchErr } = await svc
@@ -73,10 +92,7 @@ async function main() {
 
   const offer: UserOffer & { id: string } = {
     id: offerId,
-    company_id: 3,
-    company_name: '腾讯',
-    position_category: 'product_manager',
-    level: 'graduate',
+    ...offerProfile,
   } as any;
 
   // 跑 runMatchInBackground
@@ -86,13 +102,14 @@ async function main() {
   const elapsed = Date.now() - t0;
   console.log(`[probe] runMatchInBackground 返回,总耗时 ${elapsed}ms`);
 
-  // 查 matches 当前 status
+  // 查 matches 当前 status + correction_data
   const { data: after } = await svc
     .from('matches')
-    .select('status, same_count, higher_count, lower_count, error_message')
+    .select('status, same_count, higher_count, lower_count, error_message, correction_data')
     .eq('id', matchId)
     .single();
-  console.log('[probe] match 最终状态:', after);
+  console.log('[probe] match 最终状态:', { ...(after as any), correction_data: undefined });
+  console.log('[probe] correction_data:', JSON.stringify((after as any)?.correction_data, null, 2));
 
   // 清理(避免污染)
   await svc.from('matches').delete().eq('id', matchId);

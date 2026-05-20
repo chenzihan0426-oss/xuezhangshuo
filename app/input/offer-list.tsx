@@ -12,6 +12,8 @@ export interface OfferRow {
   company_name: string;
   /** 1=大厂 / 2=独角兽 / 3=普通互联网 / 4=传统企业 / 5=国企 / 6=政府 / 7=创业 */
   company_tier?: number;
+  /** 该公司行业(字典内自动从 dict 带回填,字典外用户必选) */
+  first_industry?: string;
   /** 匹配 key,必须是预定义类目 */
   position_category: string;
   /** 用户输入的具体岗位名,不影响匹配 */
@@ -21,6 +23,21 @@ export interface OfferRow {
   salary_max?: number;
   location?: string;
 }
+
+const INDUSTRY_OPTIONS: Array<[string, string]> = [
+  ['internet', '互联网'],
+  ['tech_hardware', '硬件 / 芯片'],
+  ['finance', '金融 / 投行'],
+  ['auto_ev', '新能源车'],
+  ['consulting', '咨询'],
+  ['consumer_service', '消费服务 / 餐饮 / 连锁零售'],
+  ['education_training', '教培 / 教育'],
+  ['real_estate', '地产'],
+  ['telecom', '通信'],
+  ['energy', '能源'],
+  ['startup', '创业 / 早期项目'],
+  ['other', '其他(不在以上行业)'],
+];
 
 const POSITIONS: Array<[string, string]> = [
   ['engineer_backend', '后端开发'],
@@ -63,6 +80,7 @@ async function fetchCompanies(query: string): Promise<ComboItem[]> {
     label: c.name,
     hint: `T${c.tier}${c.industry ? ' · ' + c.industry : ''}`,
     tier: c.tier,
+    industry: c.industry,
   }));
 }
 
@@ -109,7 +127,21 @@ export default function OfferList({
               <Combobox
                 placeholder="输入公司全称(没在列表也可,如:某不知名创业公司)"
                 value={o.company_name}
-                onValueChange={(s) => update(i, { company_name: s })}
+                onValueChange={(s) => {
+                  // 用户自由输入时,若文本已不再等于已绑定字典公司的名字,
+                  // 必须清空 company_id / first_industry,否则会沿用上一个公司的字典 id
+                  // 导致 fetchCandidates 错误命中(典型 bug:输入"星巴克"但 company_id 仍是阿里)
+                  const stillSameDictPick = o.company_id && o.company_name === s;
+                  if (stillSameDictPick) {
+                    update(i, { company_name: s });
+                  } else {
+                    update(i, {
+                      company_name: s,
+                      company_id: 0,
+                      first_industry: undefined,
+                    });
+                  }
+                }}
                 selectedId={o.company_id || undefined}
                 fetcher={fetchCompanies}
                 emptyHint="字典里没有,直接用你输入的名字即可"
@@ -118,6 +150,7 @@ export default function OfferList({
                     company_id: it.id as number,
                     company_name: it.label,
                     company_tier: (it.tier as number) ?? o.company_tier,
+                    first_industry: (it.industry as string) ?? o.first_industry,
                   })
                 }
               />
@@ -144,6 +177,26 @@ export default function OfferList({
               <Button variant="ghost" size="icon" onClick={() => remove(i)} aria-label="删除">
                 <X className="h-4 w-4" />
               </Button>
+            </div>
+
+            <div className="md:col-span-2">
+              <Label>
+                行业(用于匹配)
+                {isCustomCompany && <span className="ml-1 text-xs text-amber-600">必选</span>}
+              </Label>
+              <Select
+                value={o.first_industry ?? ''}
+                onValueChange={(val) => update(i, { first_industry: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选行业" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRY_OPTIONS.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="md:col-span-2">

@@ -1,11 +1,31 @@
 /**
  * 环境校正引擎(对应文档 §4.2)⭐ 决赛胜负手
  *
- * 输入:一条师兄师姐路径
+ * 输入:一条师兄师姐路径(+ 可选:user background / offer / salary baseline)
  * 输出:基础分 / 校正分 / 因子分解 / 自然语言解释
+ *
+ * 校正乘式(v2):
+ *   corrected = base
+ *     × industry         (行业景气)
+ *     × ai_factor        (AI 风险)
+ *     × policy_factor    (政策事件)
+ *     × cohort           (校招供需 / 时代红利)
+ *     × personal_boost   (学校+学历+GPA+实习 综合,作用在 user 起点)
+ *     × offer_salary     (Offer 薪资 vs 同岗位中位)
  */
-import { AI_RISK_TABLE, CURRENT_YEAR, INDUSTRY_INDEX, POLICY_EVENTS } from './constants';
-import type { SeniorPath } from './types';
+import {
+  AI_RISK_TABLE,
+  COHORT_INDEX,
+  CURRENT_YEAR,
+  EDU_LEVEL_MULTIPLIER,
+  ENABLE_BACKGROUND_PREMIUM,
+  GPA_BAND_MULTIPLIER,
+  INDUSTRY_INDEX,
+  INTERNSHIP_MULTIPLIER,
+  POLICY_EVENTS,
+  SCHOOL_TIER_MULTIPLIER,
+} from './constants';
+import type { SeniorPath, UserBackground } from './types';
 import { clamp } from './utils';
 
 export interface CorrectPathOutput {
@@ -15,6 +35,7 @@ export interface CorrectPathOutput {
     industry: number;
     ai_risk: number;
     policy_events: string[];
+    cohort: number;
   };
   explanation: string;
 }
@@ -86,15 +107,74 @@ export function policyFactor(industry: string, startYear: number): { factor: num
 }
 
 /**
- * 综合校正一条路径
+ * cohort 时代红利因子:取 path.start_year 当年的"行业校招供需"红利系数。
+ * 例:2020 互联网 ≈ 1.10(红利期),2024 教培 ≈ 0.30(双减后)。
+ *
+ * 含义:这条师兄路径"踩到时代窗口"的程度。窗口好,他更容易跑出来,
+ * 但用户(2026 起步)享受不到 → 反推用户分要相应折扣。
+ */
+export function cohortFactor(industry: string, startYear: number, currentYear = CURRENT_YEAR): number {
+  const series = COHORT_INDEX[industry];
+  if (!series) return 1.0;
+  const then = series[startYear] ?? lastDefined(series, startYear) ?? 1.0;
+  const now = series[currentYear] ?? lastDefined(series, currentYear) ?? 1.0;
+  if (then === 0) return 1.0;
+  // 用户起步在 now,师兄起步在 then。 cohort = now / then:
+  //   师兄踩到红利(then 大),用户没踩到(now 小)→ cohort < 1,折扣
+  //   师兄入场难(then 小),用户更容易(now 大)→ cohort > 1,加分
+  return clamp(now / then, 0.5, 1.5);
+}
+
+/**
+ * 个人起点加成:学校 × 学历 × GPA × 实习。
+ * 作用在"用户自己的起点",不是每条 path。
+ * 由开关 ENABLE_BACKGROUND_PREMIUM 控制,关闭时永远返回 1.0。
+ */
+export function personalBoostFactor(background: UserBackground | undefined): {
+  factor: number;
+  breakdown: { school: number; edu: number; gpa: number; internship: number };
+} {
+  const noop = { factor: 1.0, breakdown: { school: 1, edu: 1, gpa: 1, internship: 1 } };
+  if (!ENABLE_BACKGROUND_PREMIUM || !background) return noop;
+  const school = SCHOOL_TIER_MULTIPLIER[background.school_tier] ?? 1.0;
+  const edu = EDU_LEVEL_MULTIPLIER[background.education_level] ?? 1.0;
+  const gpa = GPA_BAND_MULTIPLIER[background.gpa_band] ?? 1.0;
+  const internshipsArr = background.internships ?? [];
+  const hasTop = internshipsArr.some((i) => i.duration_months >= 3);
+  const internship = hasTop
+    ? INTERNSHIP_MULTIPLIER.top
+    : internshipsArr.length > 0
+    ? INTERNSHIP_MULTIPLIER.some
+    : INTERNSHIP_MULTIPLIER.none;
+  // 总加成 clamp 在 [0.85, 1.3],避免极端
+  const factor = clamp(school * edu * gpa * internship, 0.85, 1.3);
+  return { factor, breakdown: { school, edu, gpa, internship } };
+}
+
+/**
+ * Offer 薪资 vs 同岗位起薪基准 → 因子 ∈ [0.8, 1.3]。
+ * 用户起薪比同岗位中位高很多 → 反映用户起点更强 → 5 年画像应更乐观;反之亦然。
+ */
+export function offerSalaryFactor(
+  userSalaryMid: number | undefined,
+  baseline: number | undefined,
+): number {
+  if (!userSalaryMid || !baseline || baseline <= 0) return 1.0;
+  return clamp(userSalaryMid / baseline, 0.8, 1.3);
+}
+
+/**
+ * 综合校正一条路径(per-path 因子:industry / ai / policy / cohort)
+ * 不包含 personal_boost / offer_salary —— 这两项作用在用户起点,不属于 per-path。
  */
 export function correctPath(path: SeniorPath, currentYear = CURRENT_YEAR): CorrectPathOutput {
   const base = baseScore(path);
   const ind = industryFactor(path.first_industry, path.start_year, currentYear);
   const ai = aiFactor(path.first_position_category);
   const pol = policyFactor(path.first_industry, path.start_year);
+  const coh = cohortFactor(path.first_industry, path.start_year, currentYear);
 
-  const corrected = clamp(base * ind * ai.factor * pol.factor, 0, 100);
+  const corrected = clamp(base * ind * ai.factor * pol.factor * coh, 0, 100);
 
   return {
     original: round1(base),
@@ -103,21 +183,43 @@ export function correctPath(path: SeniorPath, currentYear = CURRENT_YEAR): Corre
       industry: round2(ind),
       ai_risk: round2(ai.risk),
       policy_events: pol.events,
+      cohort: round2(coh),
     },
-    explanation: generateExplanation(ind, ai.risk, pol.events),
+    explanation: generateExplanation(ind, ai.risk, pol.events, coh),
   };
 }
 
 /**
- * 把因子翻译成 1-2 句"人话"。用于结果页校正面板默认 copy。
- * (扣子 Bot 对话里会自带更生动的版本,这里走规则保底)
+ * 把因子翻译成"人话"。新增 cohort + 可选 personal_boost / offer_salary 描述。
  */
-export function generateExplanation(industry: number, aiRisk: number, events: string[]): string {
+export function generateExplanation(
+  industry: number,
+  aiRisk: number,
+  events: string[],
+  cohort = 1.0,
+  personalBoost = 1.0,
+  offerSalary = 1.0,
+): string {
   const parts: string[] = [];
   if (industry < 0.7) parts.push(`所在行业现在比 5 年前明显降温(景气度 ${(industry * 100).toFixed(0)}%)`);
   else if (industry > 1.1) parts.push(`行业现在比 5 年前更景气(景气度 ${(industry * 100).toFixed(0)}%)`);
   if (aiRisk >= 0.6) parts.push(`AI 对该岗位有较高替代风险(${(aiRisk * 100).toFixed(0)}%)`);
   if (events.length) parts.push(`经历过外生事件:${events.join('、')}`);
+  if (cohort < 0.85) {
+    parts.push(`师兄入行时是行业红利期,2026 同岗位机会变窄(时代红利 ${(cohort * 100).toFixed(0)}%)`);
+  } else if (cohort > 1.15) {
+    parts.push(`这条赛道近年才打开,你的入场窗口比师兄更好(时代红利 ${(cohort * 100).toFixed(0)}%)`);
+  }
+  if (personalBoost > 1.05) {
+    parts.push(`你的学校 / 学历 / GPA / 实习起点不错,加成 ${((personalBoost - 1) * 100).toFixed(0)}%`);
+  } else if (personalBoost < 0.97) {
+    parts.push(`起点维度有 ${((1 - personalBoost) * 100).toFixed(0)}% 的折扣空间需要后续追赶`);
+  }
+  if (offerSalary > 1.15) {
+    parts.push(`你的 Offer 起薪高于同岗位中位 ${((offerSalary - 1) * 100).toFixed(0)}%,起点有优势`);
+  } else if (offerSalary < 0.9) {
+    parts.push(`你的 Offer 起薪比同岗位中位低 ${((1 - offerSalary) * 100).toFixed(0)}%`);
+  }
   if (!parts.length) parts.push('行业环境与岗位特征相对稳定,校正幅度有限');
   return parts.join('。') + '。';
 }
@@ -128,3 +230,6 @@ function round1(x: number) {
 function round2(x: number) {
   return Math.round(x * 100) / 100;
 }
+
+// 留个 export 给测试 / 外部调用
+export { round1 as _round1, round2 as _round2 };

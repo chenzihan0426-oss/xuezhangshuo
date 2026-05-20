@@ -28,12 +28,16 @@ export default function PathDetailModal({
   open,
   onClose,
   path,
+  salaryScale = 1,
 }: {
   open: boolean;
   onClose: () => void;
   path: SeniorPath | null;
+  salaryScale?: number;
 }) {
   if (!path) return null;
+  const scaleSalary = (s: number | undefined | null) =>
+    s ? Math.round(s * salaryScale) : s;
 
   const history: PathHistoryEntry[] = Array.isArray(path.path_history) ? path.path_history : [];
   const firstCompanyName = history[0]?.company_name;
@@ -59,7 +63,7 @@ export default function PathDetailModal({
           {/* 概要 */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <Stat label="5 年后职级" value={LEVEL_LABELS[path.five_year_level ?? 'mid']} />
-            <Stat label="5 年后年薪" value={formatSalary(path.five_year_salary)} />
+            <Stat label="5 年后年薪" value={formatSalary(scaleSalary(path.five_year_salary))} />
             <Stat label="跳槽 / 换行" value={`${path.job_changes} / ${path.industry_changes}`} />
           </div>
 
@@ -95,7 +99,7 @@ export default function PathDetailModal({
                         <Badge variant="secondary">{h.position_name ?? h.position}</Badge>
                         <Badge variant="outline">{LEVEL_LABELS[h.level] ?? h.level}</Badge>
                         {h.salary !== undefined && (
-                          <span className="text-muted-foreground">· {formatSalary(h.salary)}</span>
+                          <span className="text-muted-foreground">· {formatSalary(scaleSalary(h.salary))}</span>
                         )}
                         {jumped && (
                           <Badge variant="warning">

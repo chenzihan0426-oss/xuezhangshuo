@@ -12,17 +12,17 @@ import type { SeniorPath } from '@/lib/types';
 
 const YEARS = [0, 1, 2, 3, 4, 5];
 
-function aggregate(paths: SeniorPath[], yearIdx: number) {
+function aggregate(paths: SeniorPath[], yearIdx: number, scale = 1) {
   // 优先用 path_history,如果没有,fallback 到 start_year / 5y endpoints
   const salaries: number[] = [];
   const levels: number[] = [];
   for (const p of paths) {
     if (Array.isArray(p.path_history) && p.path_history.length > yearIdx) {
       const entry = p.path_history[yearIdx];
-      if (entry.salary) salaries.push(entry.salary);
+      if (entry.salary) salaries.push(entry.salary * scale);
       levels.push(LEVEL_ORDER[entry.level] ?? 1);
     } else if (yearIdx === 5 && p.five_year_salary) {
-      salaries.push(p.five_year_salary);
+      salaries.push(p.five_year_salary * scale);
       levels.push(LEVEL_ORDER[p.five_year_level ?? 'mid'] ?? 3);
     } else if (yearIdx === 0) {
       levels.push(LEVEL_ORDER[p.first_level] ?? 1);
@@ -38,14 +38,16 @@ export default function TimelineChart({
   same,
   higher,
   lower,
+  salaryScale = 1,
 }: {
   same: SeniorPath[];
   higher: SeniorPath[];
   lower: SeniorPath[];
+  salaryScale?: number;
 }) {
   const buildSeries = (paths: SeniorPath[], color: string, name: string) => {
-    const salaries = YEARS.map((y) => aggregate(paths, y).avgSalary);
-    const levels = YEARS.map((y) => aggregate(paths, y).avgLevel);
+    const salaries = YEARS.map((y) => aggregate(paths, y, salaryScale).avgSalary);
+    const levels = YEARS.map((y) => aggregate(paths, y, salaryScale).avgLevel);
     return [
       {
         name: `${name} · 年薪(万)`,

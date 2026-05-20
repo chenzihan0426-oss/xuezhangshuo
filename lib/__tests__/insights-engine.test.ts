@@ -133,7 +133,8 @@ describe('generateInsights', () => {
       offerIndustry: 'education_training',
       offerPositionCategory: 'customer_service',
     });
-    expect(r.length).toBeLessThanOrEqual(5);
+    // v2:扩到 6 条(给 startup-survival / in-company-promo 留位置)
+    expect(r.length).toBeLessThanOrEqual(6);
     // 权重高的应该靠前
     for (let i = 1; i < r.length; i++) {
       expect(r[i - 1].weight).toBeGreaterThanOrEqual(r[i].weight);

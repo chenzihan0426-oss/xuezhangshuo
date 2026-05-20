@@ -25,8 +25,10 @@ export function generateInsights(opts: {
   correction?: CorrectionResult;
   offerIndustry?: string;
   offerPositionCategory?: string;
+  /** 薪资缩放系数(对齐 AI 市场量级);只影响绝对薪资判断,不影响比例类规则 */
+  salaryScale?: number;
 }): Insight[] {
-  const { paths, correction, offerIndustry, offerPositionCategory } = opts;
+  const { paths, correction, offerIndustry, offerPositionCategory, salaryScale = 1 } = opts;
   const insights: Insight[] = [];
   if (!paths.length) {
     insights.push({
@@ -158,8 +160,8 @@ export function generateInsights(opts: {
     });
   }
 
-  // 8) 中位薪资低于行业基线
-  const salaries = paths.map((p) => p.five_year_salary ?? 0).filter((s) => s > 0);
+  // 8) 中位薪资低于行业基线(用 salaryScale 对齐 AI 市场量级,跟展示一致)
+  const salaries = paths.map((p) => (p.five_year_salary ?? 0) * salaryScale).filter((s) => s > 0);
   if (salaries.length >= 20) {
     const med = quantile(salaries, 0.5);
     if (med <= 150_000) {
@@ -274,8 +276,54 @@ export function generateInsights(opts: {
     });
   }
 
-  // 按 weight 降序排序,取 Top 5
-  return insights.sort((a, b) => b.weight - a.weight).slice(0, 5);
+  // 14) 创业幸存率(S6):first_company_tier = 7 的样本,5 年后画像
+  const startupPaths = paths.filter((p) => p.first_company_tier === 7);
+  if (startupPaths.length >= 5) {
+    const stillStartup = startupPaths.filter((p) => p.five_year_company_tier === 7).length;
+    const toBigCompany = startupPaths.filter(
+      (p) => p.five_year_company_tier !== undefined && p.five_year_company_tier <= 2,
+    ).length;
+    const total = startupPaths.length;
+    const stillRate = stillStartup / total;
+    const bigRate = toBigCompany / total;
+    insights.push({
+      id: 'startup-survival',
+      level: stillRate >= 0.4 ? 'info' : 'warn',
+      title: `同期选创业的师兄 5 年后:${(stillRate * 100).toFixed(0)}% 仍在创业,${(bigRate * 100).toFixed(0)}% 转入大厂`,
+      detail:
+        stillRate >= 0.4
+          ? '坚持创业的比例不算低,这条路径有韧性。'
+          : '多数人转入大厂或其他赛道,创业的"长期幸存率"偏低,做好备份预案。',
+      weight: 88,
+    });
+  }
+
+  // 15) 公司晋升中位时间(S8):同 group 里 graduate→senior 的中位年数
+  // 用现有 yearsToSenior helper 但更聚焦"在原公司没跳走的"样本(更能反映"这家公司的晋升通道")
+  const stayedAndPromoted = paths
+    .filter(
+      (p) =>
+        p.first_company_tier !== undefined &&
+        p.first_company_tier === p.five_year_company_tier,
+    )
+    .map(yearsToSenior)
+    .filter((y): y is number => y !== null);
+  if (stayedAndPromoted.length >= 5) {
+    const medYears = quantile(stayedAndPromoted, 0.5);
+    insights.push({
+      id: 'in-company-promo',
+      level: medYears >= 4.5 ? 'warn' : 'info',
+      title: `留在同一家公司的师兄,升到 senior 中位 ${medYears.toFixed(1)} 年`,
+      detail:
+        medYears >= 4.5
+          ? '内部晋升通道较慢,如果你看重晋升速度,可能要主动考虑跳槽节奏。'
+          : '同公司内部晋升节奏不错,可以考虑深耕。',
+      weight: 60,
+    });
+  }
+
+  // 按 weight 降序排序,取 Top 6(扩到 6 给新的 insights 留位置)
+  return insights.sort((a, b) => b.weight - a.weight).slice(0, 6);
 }
 
 /* ============ helpers ============ */
@@ -334,6 +382,7 @@ function labelIndustry(key: string): string {
     energy: '能源',
     consulting: '咨询',
     startup: '创业',
+    consumer_service: '消费服务',
   };
   return map[key] ?? key;
 }

@@ -13,13 +13,14 @@ import CorrectionPanel from './correction-panel';
 import PaywallModal from './paywall-modal';
 import ShareCard from './share-card';
 import InsightsPanel from './insights-panel';
+import MatchLevelBanner from './match-level-banner';
 import FiltersBar from './filters-bar';
 import TimelineChart from './timeline-chart';
 import PathsList from './paths-list';
 import { EMPTY_FILTERS, applyFilters, type PathFilters } from '@/lib/path-filters';
 import { generateInsights } from '@/lib/insights-engine';
 import { PAYWALL } from '@/lib/constants';
-import { formatSalary } from '@/lib/utils';
+import { formatSalary, quantile, clamp } from '@/lib/utils';
 import { splitGroups } from '@/lib/match-helpers';
 import type { SeniorPath } from '@/lib/types';
 
@@ -34,6 +35,9 @@ export default function ResultClient({
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [filters, setFilters] = useState<PathFilters>(EMPTY_FILTERS);
   const [paid, setPaid] = useState(false);
+  const [aiBrief, setAiBrief] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiNonce, setAiNonce] = useState(0);
 
   // 轮询直到 completed
   useEffect(() => {
@@ -49,6 +53,27 @@ export default function ResultClient({
       return () => clearInterval(t);
     }
   }, [match?.status, matchId]);
+
+  // AI 联网简报:提到父层 fetch 一次,同时供校正面板(薪资对齐)和 AI 区块用,避免重复调用
+  useEffect(() => {
+    if (match?.status !== 'completed') return;
+    let cancelled = false;
+    setAiLoading(true);
+    fetch(`/api/match/${matchId}/brief`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setAiBrief(d);
+      })
+      .catch(() => {
+        if (!cancelled) setAiBrief({ found: false, summary: '', events: [], degraded: 'error' });
+      })
+      .finally(() => {
+        if (!cancelled) setAiLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, match?.status, aiNonce]);
 
   const allPaths: SeniorPath[] = useMemo(() => match?.paths ?? [], [match?.paths]);
   const userOffer = match?.user_offers;
@@ -69,6 +94,18 @@ export default function ResultClient({
     [filtered, baselineTier],
   );
 
+  // 缩放系数:把 mock 师兄薪资整体抬到 AI 市场量级(仅展示,保留分布形状)
+  const salaryScale = useMemo(() => {
+    const sr = aiBrief?.salary_range;
+    if (!sr) return 1;
+    const aiMedYuan = ((sr.senior_low + sr.senior_high) / 2) * 10_000;
+    const mockSalaries = allPaths.map((p: any) => p.five_year_salary ?? 0).filter((s: number) => s > 0);
+    if (!mockSalaries.length) return 1;
+    const mockMed = quantile(mockSalaries, 0.5);
+    if (mockMed <= 0) return 1;
+    return clamp(aiMedYuan / mockMed, 0.2, 5);
+  }, [aiBrief, allPaths]);
+
   const insights = useMemo(
     () =>
       generateInsights({
@@ -76,8 +113,9 @@ export default function ResultClient({
         correction: match?.correction_data,
         offerIndustry: inferIndustry(userOffer?.company_id, allPaths),
         offerPositionCategory: userOffer?.position_category,
+        salaryScale,
       }),
-    [filtered, match?.correction_data, userOffer, allPaths],
+    [filtered, match?.correction_data, userOffer, allPaths, salaryScale],
   );
 
   if (!match) return null;
@@ -106,6 +144,11 @@ export default function ResultClient({
   const visiblePathCount = paid ? PAYWALL.PAID_PATHS_VISIBLE : PAYWALL.FREE_PATHS_VISIBLE;
   const cd = match.correction_data ?? {};
 
+  // AI 市场薪资(senior 区间,元/年),用于校正面板"5 年后薪资"与之对齐
+  const aiSeniorSalary = aiBrief?.salary_range
+    ? { low: aiBrief.salary_range.senior_low * 10_000, high: aiBrief.salary_range.senior_high * 10_000 }
+    : undefined;
+
   return (
     <div className="space-y-6">
       {/* offer 概要 */}
@@ -131,6 +174,13 @@ export default function ResultClient({
         </CardHeader>
       </Card>
 
+      {/* 诚实声明:虚构 / 字典外公司没找到数据时,明确告知是相似公司参考 */}
+      <MatchLevelBanner
+        companyName={userOffer?.company_name}
+        matchLevel={cd.match_level}
+        sampleSize={cd.sample_size}
+      />
+
       {/* 筛选 */}
       <FiltersBar
         filters={filters}
@@ -148,6 +198,17 @@ export default function ResultClient({
         corrected={cd.corrected_score ?? 0}
         factors={cd.factors ?? { industry: 1, ai_risk: 0, policy_events: [] }}
         explanation={cd.explanation ?? ''}
+        sampleSize={cd.sample_size}
+        avgSimilarity={cd.avg_similarity}
+        salaryP10={cd.salary_p10}
+        salaryP50={cd.salary_p50}
+        salaryP90={cd.salary_p90}
+        salaryBaseline={cd.salary_baseline}
+        matchLevel={cd.match_level}
+        aiSeniorSalary={aiSeniorSalary}
+        aiLoading={aiLoading}
+        aiBrief={aiBrief}
+        onAiRetry={() => setAiNonce((n) => n + 1)}
       />
 
       {/* 5 年时间轴 */}
@@ -157,7 +218,7 @@ export default function ResultClient({
           <p className="text-xs text-muted-foreground">实线 = 年薪走势,虚线 = 平均职级</p>
         </CardHeader>
         <CardContent>
-          <TimelineChart same={same} higher={higher} lower={lower} />
+          <TimelineChart same={same} higher={higher} lower={lower} salaryScale={salaryScale} />
         </CardContent>
       </Card>
 
@@ -189,7 +250,7 @@ export default function ResultClient({
           <CardTitle className="text-base">5 年薪资分布</CardTitle>
         </CardHeader>
         <CardContent>
-          <SalaryTrend paths={filtered} />
+          <SalaryTrend paths={filtered} salaryScale={salaryScale} />
         </CardContent>
       </Card>
 
@@ -209,6 +270,7 @@ export default function ResultClient({
         visibleCount={visiblePathCount}
         totalCount={filtered.length}
         onUpgradeClick={() => setPaywallOpen(true)}
+        salaryScale={salaryScale}
       />
 
       {/* 二级 CTA */}

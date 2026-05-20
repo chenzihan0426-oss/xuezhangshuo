@@ -55,6 +55,9 @@ export default function InputPage() {
     offers.forEach((o, i) => {
       if (!o.company_name?.trim()) out.push(`Offer ${i + 1}:公司名`);
       if (!o.company_tier) out.push(`Offer ${i + 1}:公司类型`);
+      // 字典外公司必须自填行业;字典内公司从字典自动带回,无需校验
+      const isCustomCompany = !o.company_id && !!o.company_name?.trim();
+      if (isCustomCompany && !o.first_industry) out.push(`Offer ${i + 1}:行业`);
       if (!o.position_category) out.push(`Offer ${i + 1}:岗位大类`);
       if (!o.level) out.push(`Offer ${i + 1}:职级`);
     });

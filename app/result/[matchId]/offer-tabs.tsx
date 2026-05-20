@@ -3,21 +3,23 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface HistoryItem {
+interface BatchItem {
   id: string;
-  status: string;
+  company_name: string;
+  position_category: string;
 }
 
 export default function OfferTabs({ activeMatchId }: { activeMatchId: string }) {
   const router = useRouter();
-  const [items, setItems] = useState<HistoryItem[]>([]);
+  const [items, setItems] = useState<BatchItem[]>([]);
 
   useEffect(() => {
-    fetch('/api/user/history')
+    fetch(`/api/match/${activeMatchId}/batch`)
       .then((r) => r.json())
-      .then((d) => setItems((d.items ?? []).slice(0, 5)));
-  }, []);
+      .then((d) => setItems(d.items ?? []));
+  }, [activeMatchId]);
 
+  // 本次提交只有 1 个 offer 时不显示 tabs
   if (items.length <= 1) return null;
   return (
     <Tabs
@@ -26,9 +28,9 @@ export default function OfferTabs({ activeMatchId }: { activeMatchId: string }) 
       className="mt-3"
     >
       <TabsList>
-        {items.map((it, i) => (
+        {items.map((it) => (
           <TabsTrigger key={it.id} value={it.id}>
-            Offer {items.length - i}
+            {it.company_name}
           </TabsTrigger>
         ))}
       </TabsList>

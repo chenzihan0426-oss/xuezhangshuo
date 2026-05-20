@@ -22,6 +22,7 @@ const INDUSTRY_LABEL: Record<string, string> = {
   energy: '能源',
   consulting: '咨询',
   startup: '创业',
+  consumer_service: '消费服务',
 };
 
 export default function PathsList({
@@ -29,11 +30,13 @@ export default function PathsList({
   visibleCount,
   totalCount,
   onUpgradeClick,
+  salaryScale = 1,
 }: {
   paths: SeniorPath[];
   visibleCount: number;
   totalCount: number;
   onUpgradeClick: () => void;
+  salaryScale?: number;
 }) {
   const [selected, setSelected] = useState<SeniorPath | null>(null);
   const visible = paths.slice(0, visibleCount);
@@ -54,15 +57,22 @@ export default function PathsList({
             const firstCompanyName = history[0]?.company_name;
             const lastCompanyName = history[history.length - 1]?.company_name;
             const lastPositionName = history[history.length - 1]?.position_name;
+            const isStartup = p.first_company_tier === 7;
             return (
               <button
                 key={p.id}
                 onClick={() => setSelected(p)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-brand-500 hover:bg-brand-50/30"
+                className={`flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-brand-500 hover:bg-brand-50/30 ${
+                  isStartup ? 'border-amber-300 bg-amber-50/30' : ''
+                }`}
               >
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="font-medium">匿名师兄 #{i + 1}</span>
+                    <span className="font-medium">
+                      {isStartup && <span className="mr-1" aria-label="创业">🚀</span>}
+                      匿名师兄 #{i + 1}
+                    </span>
+                    {isStartup && <Badge variant="warning">创业起步</Badge>}
                     <span className="text-xs text-muted-foreground">· {p.start_year} 入职</span>
                     <span className="font-bold text-brand-700">
                       {firstCompanyName ?? COMPANY_TIER_LABELS[p.first_company_tier ?? 5]}
@@ -79,7 +89,7 @@ export default function PathsList({
                     <Badge variant="secondary">
                       {LEVEL_LABELS[p.five_year_level ?? 'mid']}
                     </Badge>
-                    <Badge variant="secondary">{formatSalary(p.five_year_salary)}</Badge>
+                    <Badge variant="secondary">{formatSalary(Math.round((p.five_year_salary ?? 0) * salaryScale))}</Badge>
                     {p.job_changes > 0 && <Badge variant="warning">跳 {p.job_changes} 次</Badge>}
                     {p.industry_changes > 0 && (
                       <Badge variant="warning">换行 {p.industry_changes} 次</Badge>
@@ -112,7 +122,7 @@ export default function PathsList({
         </CardContent>
       </Card>
 
-      <PathDetailModal open={!!selected} path={selected} onClose={() => setSelected(null)} />
+      <PathDetailModal open={!!selected} path={selected} onClose={() => setSelected(null)} salaryScale={salaryScale} />
     </>
   );
 }
