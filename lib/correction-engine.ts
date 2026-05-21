@@ -35,6 +35,7 @@ export interface CorrectPathOutput {
     industry: number;
     ai_risk: number;
     policy_events: string[];
+    policy_factor: number;
     cohort: number;
   };
   explanation: string;
@@ -66,7 +67,10 @@ function levelToScore(level: string | undefined): number {
  */
 export function industryFactor(industry: string, startYear: number, currentYear = CURRENT_YEAR): number {
   const series = INDUSTRY_INDEX[industry];
-  if (!series) return 1.0;
+  if (!series) {
+    console.warn(`[correction] 未知行业「${industry}」,景气因子按 1.0(不校正)处理`);
+    return 1.0;
+  }
   const now = series[currentYear] ?? lastDefined(series, currentYear) ?? 1.0;
   const then = series[startYear] ?? lastDefined(series, startYear) ?? 1.0;
   if (then === 0) return 1.0;
@@ -84,10 +88,14 @@ function lastDefined(series: Record<number, number>, upTo: number): number | und
 /**
  * AI 替代风险因子。risk ∈ [0,1],返回 1 - risk * 0.3,封顶 [0.7, 1.0]。
  */
-export function aiFactor(positionCategory: string): { risk: number; factor: number } {
+export function aiFactor(positionCategory: string): { risk: number; factor: number; known: boolean } {
+  const known = positionCategory in AI_RISK_TABLE;
+  if (!known) {
+    console.warn(`[correction] 未知岗位「${positionCategory}」,AI 替代风险按相近岗位估算(0.3)`);
+  }
   const risk = AI_RISK_TABLE[positionCategory] ?? 0.3;
   const factor = clamp(1 - risk * 0.3, 0.7, 1.0);
-  return { risk, factor };
+  return { risk, factor, known };
 }
 
 /**
@@ -183,6 +191,7 @@ export function correctPath(path: SeniorPath, currentYear = CURRENT_YEAR): Corre
       industry: round2(ind),
       ai_risk: round2(ai.risk),
       policy_events: pol.events,
+      policy_factor: round2(pol.factor),
       cohort: round2(coh),
     },
     explanation: generateExplanation(ind, ai.risk, pol.events, coh),
@@ -206,9 +215,9 @@ export function generateExplanation(
   if (aiRisk >= 0.6) parts.push(`AI 对该岗位有较高替代风险(${(aiRisk * 100).toFixed(0)}%)`);
   if (events.length) parts.push(`经历过外生事件:${events.join('、')}`);
   if (cohort < 0.85) {
-    parts.push(`师兄入行时是行业红利期,2026 同岗位机会变窄(时代红利 ${(cohort * 100).toFixed(0)}%)`);
+    parts.push(`同岗位校招供需,你 2026 入场时比师兄当年明显更紧张(仅为当年的 ${(cohort * 100).toFixed(0)}%),同样的努力更难复制他的结果`);
   } else if (cohort > 1.15) {
-    parts.push(`这条赛道近年才打开,你的入场窗口比师兄更好(时代红利 ${(cohort * 100).toFixed(0)}%)`);
+    parts.push(`同岗位校招供需,你 2026 入场时比师兄当年更宽松(达当年的 ${(cohort * 100).toFixed(0)}%),这条赛道近年才打开`);
   }
   if (personalBoost > 1.05) {
     parts.push(`你的学校 / 学历 / GPA / 实习起点不错,加成 ${((personalBoost - 1) * 100).toFixed(0)}%`);

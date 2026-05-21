@@ -1,7 +1,9 @@
 'use client';
 import ReactECharts from 'echarts-for-react';
+import { useIsMobile } from '@/lib/use-is-mobile';
 
 export default function SankeyFlow({ paths }: { paths: any[] }) {
+  const isMobile = useIsMobile();
   if (!paths.length) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
@@ -38,9 +40,9 @@ export default function SankeyFlow({ paths }: { paths: any[] }) {
         links: linkData,
         emphasis: { focus: 'adjacency' },
         lineStyle: { color: 'gradient', curveness: 0.5 },
-        label: { fontSize: 11 },
+        label: { fontSize: isMobile ? 9 : 11 },
       },
     ],
   };
-  return <ReactECharts option={option} style={{ height: 400 }} />;
+  return <ReactECharts option={option} style={{ height: isMobile ? 260 : 400 }} />;
 }

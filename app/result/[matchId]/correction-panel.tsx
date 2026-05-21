@@ -6,16 +6,21 @@
  * 底部:5 年薪资 P10-P90 区间(辅助 SalaryTrend)
  */
 'use client';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactECharts from 'echarts-for-react';
 import { formatSalary } from '@/lib/utils';
+import { useIsMobile } from '@/lib/use-is-mobile';
+import { FACTOR_SOURCES } from '@/lib/constants';
 import { AiBriefContent, type AiBrief } from './ai-brief-panel';
 
 export interface CorrectionFactors {
   industry: number;
   ai_risk: number;
   policy_events: string[];
+  /** 政策事件叠乘净系数(≤1);缺省按 1.0(无外生冲击) */
+  policy_factor?: number;
   cohort?: number;
   personal_boost?: number;
   offer_salary?: number;
@@ -73,6 +78,7 @@ export default function CorrectionPanel({
   /** AI 检索重试 */
   onAiRetry?: () => void;
 }) {
+  const isMobile = useIsMobile();
   // AI 公司级精化:校正分 = 规则基线 × AI 调整系数(限幅 [0.85,1.15],无 AI 则 1.0)
   const aiCorrection = aiBrief?.correction ?? null;
   const aiAdjustment = aiCorrection?.company_adjustment ?? 1;
@@ -85,7 +91,10 @@ export default function CorrectionPanel({
 
   const option = {
     grid: { left: 60, right: 30, bottom: 30, top: 40 },
-    xAxis: { type: 'category', data: ['原始评分', '环境校正后'] },
+    xAxis: {
+      type: 'category',
+      data: ['原始评分', aiLoading ? '校正后(规则基线)' : '环境校正后'],
+    },
     yAxis: { type: 'value', max: 100 },
     tooltip: { trigger: 'axis' },
     series: [
@@ -134,18 +143,16 @@ export default function CorrectionPanel({
           <AiBriefContent brief={aiBrief ?? null} loading={!!aiLoading} onRetry={onAiRetry ?? (() => {})} />
         </div>
 
-        {/* ② 环境校正结论(等 AI 完成后一起出;校正分已结合 AI 公司级精化) */}
-        {aiLoading ? (
-          <div className="space-y-2">
-            <div className="h-4 w-1/3 animate-pulse rounded bg-amber-100" />
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="h-48 animate-pulse rounded bg-amber-50" />
-              <div className="h-48 animate-pulse rounded bg-amber-50" />
-            </div>
-          </div>
-        ) : (
+        {/* ② 环境校正结论:规则层立即呈现,AI 公司级精化随后在其上叠加 */}
         <div className="grid gap-6 md:grid-cols-2">
-          <ReactECharts option={option} style={{ height: 220 }} />
+          <div>
+            <ReactECharts option={option} style={{ height: isMobile ? 180 : 220 }} />
+            {aiLoading && (
+              <p className="-mt-1 text-center text-[11px] text-muted-foreground">
+                先按规则基线呈现,AI 联网核对后会微调校正分
+              </p>
+            )}
+          </div>
           <div className="space-y-3 text-sm">
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <Factor label="行业景气" value={`${(factors.industry * 100).toFixed(0)}%`}
@@ -231,6 +238,15 @@ export default function CorrectionPanel({
             </div>
           )}
           <p className="rounded-md bg-white p-3 text-sm">{explanation}</p>
+          <CalculationBreakdown
+            original={original}
+            corrected={displayCorrected}
+            factors={factors}
+            cohort={cohort}
+            personal={personal}
+            offerSalary={offerSalary}
+            aiAdjustment={aiAdjustment}
+          />
           {personal !== 1 && (
             <p className="text-[10px] leading-snug text-muted-foreground">
               「起点加成」基于历史数据观察(学校层级 × 学历 × GPA × 实习经历)对长期发展的相关性,
@@ -239,9 +255,104 @@ export default function CorrectionPanel({
           )}
         </div>
         </div>
-        )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * 「这个分数怎么算出来的」—— 把校正分拆成 原始分 × 每个因子 的可追溯账本。
+ * 每个因子标注数据来源 + 算法口径(取自 FACTOR_SOURCES),消除黑盒质疑。
+ */
+function CalculationBreakdown({
+  original,
+  corrected,
+  factors,
+  cohort,
+  personal,
+  offerSalary,
+  aiAdjustment,
+}: {
+  original: number;
+  corrected: number;
+  factors: CorrectionFactors;
+  cohort: number;
+  personal: number;
+  offerSalary: number;
+  aiAdjustment: number;
+}) {
+  const [open, setOpen] = useState(false);
+  // ai_risk 是风险值,真正乘进分数的是 1 − risk×0.3(限幅 [0.7,1.0])
+  const aiMult = Math.min(1, Math.max(0.7, 1 - factors.ai_risk * 0.3));
+  const policyMult = factors.policy_factor ?? 1;
+  const overall = original > 0 ? corrected / original : 1;
+
+  const rows: { key: keyof typeof FACTOR_SOURCES; label: string; mult: number; note?: string }[] = [
+    { key: 'industry', label: '行业景气', mult: factors.industry },
+    { key: 'ai_risk', label: 'AI 替代', mult: aiMult, note: `岗位替代风险 ${(factors.ai_risk * 100).toFixed(0)}%` },
+    { key: 'policy', label: '政策事件', mult: policyMult, note: factors.policy_events.length ? factors.policy_events.join('、') : '无外生冲击' },
+    { key: 'cohort', label: '时代红利', mult: cohort },
+    { key: 'personal', label: '起点加成', mult: personal },
+    { key: 'offer_salary', label: 'Offer 薪资', mult: offerSalary },
+  ];
+
+  return (
+    <div className="rounded-md border bg-white text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between p-3 text-left font-medium hover:bg-muted/40"
+      >
+        <span>🔍 这个分数怎么算出来的(每个因子可追溯来源)</span>
+        <span className="text-muted-foreground">{open ? '收起 ▲' : '展开 ▼'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t p-3">
+          <div className="flex items-center justify-between rounded bg-muted/40 px-2 py-1.5">
+            <span>原始评分(同/相近背景师兄 5 年后画像均分)</span>
+            <span className="font-mono font-semibold">{original.toFixed(1)}</span>
+          </div>
+          {rows.map((r) => {
+            const src = FACTOR_SOURCES[r.key];
+            const isDiscount = r.mult < 0.99;
+            const isBoost = r.mult > 1.01;
+            return (
+              <div key={r.label} className="border-b border-dashed pb-2 last:border-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">× {r.label}{r.note ? `(${r.note})` : ''}</span>
+                  <span className={`font-mono font-semibold ${isDiscount ? 'text-amber-700' : isBoost ? 'text-emerald-700' : 'text-foreground'}`}>
+                    ×{r.mult.toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-0.5 leading-snug text-muted-foreground/80">
+                  <span className="font-medium text-muted-foreground">来源:</span>{src.source}
+                  <br />
+                  <span className="font-medium text-muted-foreground">口径:</span>{src.method}
+                </div>
+              </div>
+            );
+          })}
+          {aiAdjustment !== 1 && (
+            <div className="flex items-center justify-between rounded bg-sky-50 px-2 py-1.5">
+              <span className="text-sky-800">× AI 公司级微调(实时联网核对)</span>
+              <span className="font-mono font-semibold text-sky-800">×{aiAdjustment.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between rounded bg-amber-50 px-2 py-1.5">
+            <span className="font-medium">综合校正系数 = 校正分 ÷ 原始分</span>
+            <span className="font-mono font-semibold">×{overall.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between rounded bg-muted/40 px-2 py-1.5">
+            <span className="font-semibold">校正分</span>
+            <span className="font-mono font-semibold">{corrected.toFixed(1)}</span>
+          </div>
+          <p className="leading-snug text-muted-foreground/70">
+            各因子为同/相近背景师兄群体的均值,连乘约等于综合系数;校正分按「每条师兄路径先各自校正、再取平均」精确计算,
+            故与逐项连乘可能有 1-2 分取整差异。所有指数表为 V1 演示标定,正式版接入智联真实数据后按同口径重算。
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

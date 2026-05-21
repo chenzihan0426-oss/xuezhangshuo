@@ -1,6 +1,7 @@
 'use client';
 import ReactECharts from 'echarts-for-react';
 import { mean } from '@/lib/utils';
+import { useIsMobile } from '@/lib/use-is-mobile';
 
 export default function ThreeGroupChart({
   same, higher, lower, paths,
@@ -10,6 +11,7 @@ export default function ThreeGroupChart({
   lower: number;
   paths: any[];
 }) {
+  const isMobile = useIsMobile();
   if (!paths.length) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
@@ -48,5 +50,5 @@ export default function ThreeGroupChart({
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 320 }} />;
+  return <ReactECharts option={option} style={{ height: isMobile ? 260 : 320 }} />;
 }

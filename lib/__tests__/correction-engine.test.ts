@@ -133,7 +133,7 @@ describe('generateExplanation', () => {
   });
   it('mentions cohort when significantly off-baseline', () => {
     const e = generateExplanation(1.0, 0.3, [], 0.6);
-    expect(e).toMatch(/红利期|时代红利/);
+    expect(e).toMatch(/校招供需|供需/);
   });
   it('mentions personal boost when significantly above 1', () => {
     const e = generateExplanation(1.0, 0.3, [], 1.0, 1.12);

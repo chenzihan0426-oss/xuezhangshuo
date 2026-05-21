@@ -122,6 +122,8 @@ export interface CorrectionResult {
     industry: number;
     ai_risk: number;
     policy_events: string[];
+    /** 政策事件叠乘后的净影响系数(≤1),与 policy_events 同源 */
+    policy_factor?: number;
     /** 校招供需比 / 时代红利因子(>1 = 当年好机会,<1 = 内卷期) */
     cohort?: number;
     /** 用户起点加成(GPA + 实习 + 学校 + 学历 综合乘数) */

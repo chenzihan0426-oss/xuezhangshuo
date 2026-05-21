@@ -88,6 +88,7 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
     industry: mean(corrections.map((c) => c.factors.industry)),
     ai_risk: mean(corrections.map((c) => c.factors.ai_risk)),
     policy_events: policyEventsForOfferIndustry,
+    policy_factor: mean(corrections.map((c) => c.factors.policy_factor ?? 1)),
     cohort: mean(corrections.map((c) => c.factors.cohort ?? 1)),
   };
 
@@ -140,6 +141,7 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
         industry: round2(aggregatedFactors.industry),
         ai_risk: round2(aggregatedFactors.ai_risk),
         policy_events: aggregatedFactors.policy_events,
+        policy_factor: round2(aggregatedFactors.policy_factor),
         cohort: round2(aggregatedFactors.cohort),
         personal_boost: round2(personal.factor),
         offer_salary: round2(offerSalaryF),

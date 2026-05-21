@@ -156,12 +156,43 @@ export default async function Home() {
         />
       </section>
 
-      {/* 数据来源诚实声明 */}
-      <section className="rounded-xl border bg-muted/40 p-6 text-sm text-muted-foreground">
-        <p>
-          🔍 <strong>关于数据来源</strong>:V1 演示版样本基于智联招聘《2024 高校毕业生就业报告》、
-          麦可思《就业蓝皮书》、国家统计局公开数据生成,经 LLM 辅助补全后人工抽检。
-          决赛后正式版将对接智联真实合作数据(已在协商)。
+      {/* 数据飞轮:从公开基线 → 众包 → 机构合作,讲清楚护城河怎么越滚越深 */}
+      <section className="rounded-xl border bg-muted/40 p-6 text-sm">
+        <p className="font-semibold text-foreground">🔍 数据从哪来,会越来越准</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border bg-white p-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="success" className="text-[10px]">V1 现在</Badge>
+              <span className="text-xs font-medium">公开数据基线</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              基于智联《高校毕业生就业报告》、麦可思《就业蓝皮书》、国家统计局公开数据构建师兄路径与环境校正基线,
+              LLM 辅助补全后人工抽检 —— <strong>每个校正因子都标注来源、可在结果页逐项核对</strong>。
+            </p>
+          </div>
+          <div className="rounded-lg border bg-white p-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="warning" className="text-[10px]">V2 众包</Badge>
+              <span className="text-xs font-medium">用户上传真实路径</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              用户自愿回填自己的真实 5 年轨迹,沉淀为平台私有数据集 ——
+              用得越多、路径越真,反推越准,形成<strong>别人难以复制的网络效应</strong>。
+            </p>
+          </div>
+          <div className="rounded-lg border bg-white p-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px]">V3 合作</Badge>
+              <span className="text-xs font-medium">机构脱敏数据</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              与智联、高校就业指导中心对接脱敏真实样本(协商中),全程 k-匿名 ≥1000、不落个人信息 ——
+              把基线从"演示"升级为"可核验"。
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          ⚠️ 当前展示为 <strong>V1 演示数据</strong>:用于验证算法与交互,师兄路径为按公开分布生成的模拟样本,不代表特定真实个人。
         </p>
       </section>
     </div>

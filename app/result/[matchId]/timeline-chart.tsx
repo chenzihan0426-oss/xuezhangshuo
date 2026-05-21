@@ -8,6 +8,7 @@
 import ReactECharts from 'echarts-for-react';
 import { LEVEL_ORDER } from '@/lib/constants';
 import { mean } from '@/lib/utils';
+import { useIsMobile } from '@/lib/use-is-mobile';
 import type { SeniorPath } from '@/lib/types';
 
 const YEARS = [0, 1, 2, 3, 4, 5];
@@ -45,6 +46,7 @@ export default function TimelineChart({
   lower: SeniorPath[];
   salaryScale?: number;
 }) {
+  const isMobile = useIsMobile();
   const buildSeries = (paths: SeniorPath[], color: string, name: string) => {
     const salaries = YEARS.map((y) => aggregate(paths, y, salaryScale).avgSalary);
     const levels = YEARS.map((y) => aggregate(paths, y, salaryScale).avgLevel);
@@ -107,5 +109,5 @@ export default function TimelineChart({
     series,
   };
 
-  return <ReactECharts option={option} style={{ height: 320 }} />;
+  return <ReactECharts option={option} style={{ height: isMobile ? 260 : 320 }} />;
 }

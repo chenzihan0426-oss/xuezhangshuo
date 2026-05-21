@@ -1,8 +1,10 @@
 'use client';
 import ReactECharts from 'echarts-for-react';
 import { quantile } from '@/lib/utils';
+import { useIsMobile } from '@/lib/use-is-mobile';
 
 export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; salaryScale?: number }) {
+  const isMobile = useIsMobile();
   if (!paths.length) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
@@ -78,5 +80,5 @@ export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; 
       },
     ],
   };
-  return <ReactECharts option={option} style={{ height: 280 }} />;
+  return <ReactECharts option={option} style={{ height: isMobile ? 240 : 280 }} />;
 }

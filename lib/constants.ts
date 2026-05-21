@@ -194,3 +194,54 @@ export const PAYWALL = {
 
 export const VECTOR_DIM = 128;
 export const CURRENT_YEAR = 2026;
+
+/**
+ * 因子来源与算法口径(供 UI「这个分数怎么算出来的」展示)。
+ * 每个数值都必须能追溯到这里 —— 评委/用户可逐项核对,不是黑盒。
+ * V1 演示版的指数表由 seed_environment_factors.py 按以下公开来源标定后写入
+ * environment_factors 表;正式版接入智联真实合作数据后按同口径重算。
+ */
+export interface FactorSource {
+  /** 这个因子衡量什么 */
+  what: string;
+  /** 数据来源(可追溯的公开口径) */
+  source: string;
+  /** 怎么算成这个乘数的 */
+  method: string;
+}
+
+export const FACTOR_SOURCES: Record<
+  'industry' | 'ai_risk' | 'policy' | 'cohort' | 'personal' | 'offer_salary',
+  FactorSource
+> = {
+  industry: {
+    what: '行业现在比师兄起步时景气多少',
+    source: '国家统计局分行业增加值/营收增速 + 智联《中国企业招聘薪酬报告》行业景气,以 2020 年为基准 1.0 归一',
+    method: '当前年指数 ÷ 师兄起步年指数(同行业时间序列见 INDUSTRY_INDEX)',
+  },
+  ai_risk: {
+    what: '未来 5 年 AI 对该岗位的可替代概率',
+    source: '麦肯锡《生成式 AI 的经济潜力》、宾大/OpenAI《GPTs are GPTs》岗位暴露度研究,映射到岗位类目',
+    method: '替代风险 r∈[0,1] → 乘数 = 1 − r×0.3,限幅 [0.70, 1.00](风险越高,折扣越多)',
+  },
+  policy: {
+    what: '师兄起步后才发生的政策/行业外生冲击',
+    source: '公开政策文件与行业事件:双减(2021)、地产三道红线(2022)、互联网整改裁员(2023)等',
+    method: '只叠乘「在该师兄起步年之后」发生且同行业的事件影响系数(见 POLICY_EVENTS)',
+  },
+  cohort: {
+    what: '你 2026 入场 vs 师兄当年入场的校招机会窗口',
+    source: '教育部高校毕业生规模 + 智联校招岗位供需比,反映入场年份的机会宽窄',
+    method: '你入场年供需指数 ÷ 师兄入场年供需指数,限幅 [0.5, 1.5](见 COHORT_INDEX)',
+  },
+  personal: {
+    what: '你的院校/学历/GPA/实习起点',
+    source: '历史样本中 院校层级 × 学历 × GPA × 实习 与 5 年薪资的相关性观察',
+    method: '四维各自乘数连乘后限幅 [0.85, 1.30];是统计相关,不代表对个人能力的评价',
+  },
+  offer_salary: {
+    what: '你的 Offer 起薪相对同岗位的位置',
+    source: '同岗位、同档次师兄的起薪中位数(本次匹配样本内计算)',
+    method: '你的 Offer 起薪 ÷ 同岗位师兄起薪中位,限幅 [0.80, 1.30]',
+  },
+};

@@ -77,6 +77,9 @@ export default async function SharePage({ params }: { params: { id: string } }) 
           </Button>
         </CardContent>
       </Card>
+      <p className="px-1 text-[11px] leading-snug text-muted-foreground">
+        🔍 V1 演示数据为模拟数据(基于公开就业报告分布生成),正式版将对接智联真实合作数据。
+      </p>
     </div>
   );
 }
