@@ -43,12 +43,12 @@ export function schoolNameFor(pathId: string, tier: number | undefined): string 
 }
 
 export const COMPANY_TIER_LABELS: Record<number, string> = {
-  1: '一线大厂',
-  2: '独角兽',
-  3: '普通互联网',
+  1: '一线 / 行业顶部',
+  2: '头部 / 独角兽',
+  3: '普通公司',
   4: '传统企业',
-  5: '国企',
-  6: '政府',
+  5: '国企 / 央企',
+  6: '政府机关',
   7: '创业公司',
 };
 

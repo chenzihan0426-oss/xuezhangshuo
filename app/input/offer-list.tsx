@@ -10,7 +10,7 @@ export interface OfferRow {
   /** 0 表示字典外,用户手填 */
   company_id: number;
   company_name: string;
-  /** 1=大厂 / 2=独角兽 / 3=普通互联网 / 4=传统企业 / 5=国企 / 6=政府 / 7=创业 */
+  /** 1=一线/行业顶部 / 2=头部/独角兽 / 3=普通 / 4=传统企业 / 5=国企央企 / 6=政府 / 7=创业 */
   company_tier?: number;
   /** 该公司行业(字典内自动从 dict 带回填,字典外用户必选) */
   first_industry?: string;
@@ -61,11 +61,11 @@ const POSITIONS: Array<[string, string]> = [
 ];
 
 const COMPANY_TIER_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 1, label: '一线大厂(如 字节/阿里/腾讯)' },
-  { value: 2, label: '独角兽 / 二线互联网' },
-  { value: 3, label: '普通互联网公司' },
-  { value: 4, label: '传统企业 / 房地产 / 教培' },
-  { value: 5, label: '国企 / 银行' },
+  { value: 1, label: '一线 / 行业顶部(如 字节/阿里/腾讯/中信证券/招行)' },
+  { value: 2, label: '头部 / 独角兽(如 滴滴/快手/华泰证券/股份行)' },
+  { value: 3, label: '普通公司(中型互联网 / 地方券商 / 中型企业)' },
+  { value: 4, label: '传统企业(房地产 / 教培 / 制造)' },
+  { value: 5, label: '国企 / 央企(国家电网 / 中移动 等)' },
   { value: 6, label: '政府 / 事业单位' },
   { value: 7, label: '创业公司 / 初创' },
 ];

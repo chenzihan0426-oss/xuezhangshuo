@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_majors_category ON majors(category);
 CREATE TABLE IF NOT EXISTS companies (
   id            SERIAL PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
-  tier          INTEGER,                       -- 1=大厂/2=独角兽/3=普互联网/4=传统/5=国企/6=政府/7=创业
+  tier          INTEGER,                       -- 1=一线/行业顶部 2=头部/独角兽 3=普通 4=传统 5=国企央企 6=政府 7=创业
   industry      VARCHAR(50)
 );
 CREATE INDEX IF NOT EXISTS idx_companies_tier ON companies(tier);
