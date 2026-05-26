@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
         <Header />
-        <main className="container py-6">{children}</main>
+        <main className="w-full py-6">{children}</main>
         <Footer />
         <Suspense fallback={null}>
           <LoginModal />

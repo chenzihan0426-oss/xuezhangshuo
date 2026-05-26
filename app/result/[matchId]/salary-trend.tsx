@@ -2,6 +2,15 @@
 import ReactECharts from 'echarts-for-react';
 import { quantile } from '@/lib/utils';
 import { useIsMobile } from '@/lib/use-is-mobile';
+import {
+  baseOption,
+  categoryAxis,
+  valueAxis,
+  barGradient,
+  CHART_COLORS,
+  GROUP_COLORS,
+  FONT_FAMILY,
+} from '@/lib/chart-theme';
 
 export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; salaryScale?: number }) {
   const isMobile = useIsMobile();
@@ -12,67 +21,104 @@ export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; 
       </div>
     );
   }
-  // 把薪资分桶(以 10 万为单位),画分布。salaryScale 把 mock 量级对齐到 AI 市场水平。
+
+  // 把薪资分桶(以 10 万为单位)。salaryScale 把 mock 量级对齐到 AI 市场水平。
   const buckets = new Map<number, number>();
   const salaries: number[] = [];
   for (const p of paths) {
     const s = (p.five_year_salary ?? 0) * salaryScale;
     if (s > 0) salaries.push(s);
-    const b = Math.floor(s / 100000) * 10; // bucket = 10 万 / 20 万 / ...
+    const b = Math.floor(s / 100000) * 10;
     buckets.set(b, (buckets.get(b) ?? 0) + 1);
   }
   const sorted = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
 
-  // 计算 P10/P50/P90 分位,叠加为 markLine
   const hasEnough = salaries.length >= 5;
   const p10 = hasEnough ? quantile(salaries, 0.1) : 0;
   const p50 = hasEnough ? quantile(salaries, 0.5) : 0;
   const p90 = hasEnough ? quantile(salaries, 0.9) : 0;
 
-  // 把分位数映射到 x 轴的 bucket index(连续)
   const findBucketIdx = (salary: number): number => {
     const b = Math.floor(salary / 100000) * 10;
     return sorted.findIndex(([k]) => k === b);
   };
 
+  // 给中位数那一根柱子额外加亮(emerald 强调)
+  const medianIdx = hasEnough ? findBucketIdx(p50) : -1;
+
   const option = {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 50, right: 30, bottom: 30, top: 50 },
-    xAxis: {
-      type: 'category',
-      data: sorted.map(([k]) => `${k}-${k + 10} 万`),
-      axisLabel: { rotate: 30 },
+    ...baseOption(),
+    grid: { top: 56, left: 12, right: 24, bottom: 36, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow',
+        shadowStyle: { color: CHART_COLORS.brandSoft },
+      },
+      backgroundColor: '#ffffff',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      padding: [10, 14],
+      textStyle: { color: CHART_COLORS.text, fontSize: 12, fontFamily: FONT_FAMILY },
+      extraCssText:
+        'box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.15), 0 4px 12px -4px rgba(15, 23, 42, 0.08); border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8);',
     },
-    yAxis: { type: 'value', name: '人数' },
+    legend: { show: false },
+    xAxis: {
+      ...categoryAxis(),
+      data: sorted.map(([k]) => `${k}-${k + 10} 万`),
+      axisLabel: {
+        color: CHART_COLORS.textMuted,
+        fontSize: 11,
+        fontFamily: FONT_FAMILY,
+        rotate: 30,
+        margin: 12,
+      },
+    },
+    yAxis: valueAxis({ name: '人数' }),
     series: [
       {
         type: 'bar',
-        data: sorted.map(([, v]) => v),
-        itemStyle: { color: '#3b82f6' },
-        barWidth: 32,
+        data: sorted.map(([, v], idx) => ({
+          value: v,
+          itemStyle: {
+            color:
+              idx === medianIdx
+                ? barGradient(GROUP_COLORS.higher, GROUP_COLORS.higherSoft)
+                : barGradient(GROUP_COLORS.same, GROUP_COLORS.sameSoft),
+            borderRadius: [8, 8, 0, 0],
+          },
+        })),
+        barWidth: '52%',
         markLine: hasEnough
           ? {
               symbol: 'none',
               label: {
                 formatter: (p: { name: string }) => p.name,
                 fontSize: 10,
+                color: CHART_COLORS.textMuted,
+                fontFamily: FONT_FAMILY,
+                padding: [4, 8],
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                borderRadius: 4,
               },
-              lineStyle: { type: 'dashed' },
+              lineStyle: { type: 'dashed', width: 1.5 },
               data: [
                 {
                   name: `P10 ${(p10 / 10000).toFixed(0)} 万`,
                   xAxis: findBucketIdx(p10),
-                  lineStyle: { color: '#94a3b8' },
+                  lineStyle: { color: CHART_COLORS.slate, opacity: 0.6 },
                 },
                 {
                   name: `中位 ${(p50 / 10000).toFixed(0)} 万`,
                   xAxis: findBucketIdx(p50),
-                  lineStyle: { color: '#16a34a', width: 2 },
+                  lineStyle: { color: CHART_COLORS.emerald, width: 2 },
+                  label: { color: CHART_COLORS.emerald, fontWeight: 'bold' },
                 },
                 {
                   name: `P90 ${(p90 / 10000).toFixed(0)} 万`,
                   xAxis: findBucketIdx(p90),
-                  lineStyle: { color: '#94a3b8' },
+                  lineStyle: { color: CHART_COLORS.slate, opacity: 0.6 },
                 },
               ],
             }
@@ -80,5 +126,5 @@ export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; 
       },
     ],
   };
-  return <ReactECharts option={option} style={{ height: isMobile ? 240 : 280 }} />;
+  return <ReactECharts option={option} style={{ height: isMobile ? 260 : 300 }} />;
 }

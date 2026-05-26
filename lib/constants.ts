@@ -86,6 +86,22 @@ export const INDUSTRY_INDEX: IndustryIndexMap = {
   consumer_service:   { 2020: 1.0, 2021: 0.75, 2022: 0.6,  2023: 0.85, 2024: 0.9,  2025: 0.9,  2026: 0.92 },
 };
 
+/** 行业中文展示名 */
+export const INDUSTRY_LABEL: Record<string, string> = {
+  internet: '互联网',
+  finance: '金融',
+  education_training: '教育培训',
+  real_estate: '房地产',
+  auto_ev: '新能源车',
+  tech_hardware: '科技硬件',
+  telecom: '通信',
+  energy: '能源',
+  consulting: '咨询',
+  startup: '创业公司',
+  consumer_service: '消费服务',
+  unknown: '其他',
+};
+
 /** AI 5 年替代风险(0-1,越大风险越高) */
 export const AI_RISK_TABLE: AiRiskMap = {
   content_operation:   0.70,

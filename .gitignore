@@ -41,3 +41,6 @@ scripts/.cache/
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# 本地给 LLM 打包的代码文本,不入库
+gemini-bundles/
