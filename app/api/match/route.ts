@@ -12,6 +12,17 @@ import type { UserBackground, UserOffer } from '@/lib/types';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+/**
+ * PostgREST 在列不存在时通常返回 PostgreSQL 错误码 42703,
+ * 但在不同 supabase-js 版本里也可能落到 message 里。两种都判,稳一些。
+ */
+function isMissingColumnError(err: any, column: string): boolean {
+  if (!err) return false;
+  if (err.code === '42703') return true;
+  const msg = String(err.message ?? '').toLowerCase();
+  return msg.includes(column.toLowerCase()) && (msg.includes('column') || msg.includes('does not exist'));
+}
+
 const InternshipSchema = z.object({
   company_id: z.number(),
   position_category: z.string(),
@@ -141,20 +152,29 @@ export async function POST(req: NextRequest) {
   // 1) 创建 N 个 matches 占位,拿到 id 先返回给前端,前端立刻能跳到 result/[id](页面会显示骨架屏)
   // batch_id:同一次提交的 N 个 matches 共享一个 UUID,batch API 用它精确归组,
   // 解决"跨提交被 created_at 窗口误圈"的问题。
+  //
+  // 容错:如果数据库还没跑 0005 迁移(batch_id 列不存在),首次 insert 会失败,
+  // 自动降级到不带 batch_id 的 insert,batch API 端会走窗口 fallback。
   const batchId = crypto.randomUUID();
+  let hasBatchIdColumn = true;
   const matchRows: { id: string; offer: typeof offerRows[number] }[] = [];
   for (const offer of offerRows) {
-    const { data, error } = await svc
-      .from('matches')
-      .insert({
-        user_id: user.id,
-        user_offer_id: offer.id,
-        batch_id: batchId,
-        status: 'computing',
-        matched_path_ids: [],
-      })
-      .select()
-      .single();
+    const base: Record<string, any> = {
+      user_id: user.id,
+      user_offer_id: offer.id,
+      status: 'computing',
+      matched_path_ids: [],
+    };
+    const payload = hasBatchIdColumn ? { ...base, batch_id: batchId } : base;
+    let { data, error } = await svc.from('matches').insert(payload).select().single();
+    if (error && isMissingColumnError(error, 'batch_id') && hasBatchIdColumn) {
+      console.warn(
+        '[POST /api/match] matches.batch_id 列不存在,降级 insert。' +
+          '请尽快在 Supabase 跑 supabase/migrations/0005_match_batch_id.sql 以启用精确归组。',
+      );
+      hasBatchIdColumn = false;
+      ({ data, error } = await svc.from('matches').insert(base).select().single());
+    }
     if (error) throw error;
     matchRows.push({ id: data.id as string, offer });
   }

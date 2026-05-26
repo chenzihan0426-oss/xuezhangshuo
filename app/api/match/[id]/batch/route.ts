@@ -4,10 +4,12 @@
  *
  * 归组策略(按可靠性顺序):
  *   1) batch_id 优先(POST /api/match 起统一写入,精确归组)
- *   2) 老数据 batch_id 为 NULL → fallback 用 created_at ±5s 窗口
+ *   2) 老数据 batch_id 为 NULL 或字段不存在 → fallback 用 created_at ±5s 窗口
  *
  * 最后再做去重:同一 (company_name + position_category) 只保留 created_at 最新的一条。
- * 这样即使 zombie 自愈或老数据窗口重叠,UI 上也只显示用户实际填的那几个 offer。
+ * 这样即使 zombie 自愈、用户双击或老数据窗口重叠,UI 上也只显示用户实际填的那几个 offer。
+ *
+ * 容错:如果数据库还没跑 0005 迁移(batch_id 列不存在),select 会失败 → 自动降级到无 batch_id 模式。
  */
 import { NextResponse } from 'next/server';
 import { apiRequireUser } from '@/lib/auth';
@@ -15,44 +17,73 @@ import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 const FALLBACK_WINDOW_MS = 5_000;
 
+const BASE_COLS =
+  'id, created_at, status, correction_data, same_count, higher_count, lower_count, ' +
+  'user_offers(company_name, company_id, position_category, level, salary_min, salary_max)';
+
+function isMissingColumnError(err: any, column: string): boolean {
+  if (!err) return false;
+  if (err.code === '42703') return true;
+  const msg = String(err.message ?? '').toLowerCase();
+  return msg.includes(column.toLowerCase()) && (msg.includes('column') || msg.includes('does not exist'));
+}
+
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const user = await apiRequireUser();
   if (user instanceof NextResponse) return user;
 
   const sb = createSupabaseServerClient();
-  const { data: cur } = await sb
-    .from('matches')
-    .select('id, created_at, batch_id')
-    .eq('id', params.id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (!cur) return NextResponse.json({ items: [] });
 
-  const curBatchId = (cur as any).batch_id as string | null;
-  const SELECT_COLS =
-    'id, created_at, batch_id, status, correction_data, same_count, higher_count, lower_count, ' +
-    'user_offers(company_name, company_id, position_category, level, salary_min, salary_max)';
+  // 先尝试带 batch_id 读当前 match
+  let curBatchId: string | null = null;
+  let curCreatedAt: string | null = null;
+  let hasBatchIdColumn = true;
+  {
+    const { data, error } = await sb
+      .from('matches')
+      .select('id, created_at, batch_id')
+      .eq('id', params.id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error && isMissingColumnError(error, 'batch_id')) {
+      hasBatchIdColumn = false;
+      const r2 = await sb
+        .from('matches')
+        .select('id, created_at')
+        .eq('id', params.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!r2.data) return NextResponse.json({ items: [] });
+      curCreatedAt = (r2.data as any).created_at;
+    } else if (error) {
+      return NextResponse.json({ items: [] });
+    } else {
+      if (!data) return NextResponse.json({ items: [] });
+      curBatchId = (data as any).batch_id ?? null;
+      curCreatedAt = (data as any).created_at;
+    }
+  }
 
-  let query = sb.from('matches').select(SELECT_COLS).eq('user_id', user.id);
+  const selectCols = hasBatchIdColumn ? `${BASE_COLS}, batch_id` : BASE_COLS;
+  let query = sb.from('matches').select(selectCols).eq('user_id', user.id);
 
-  if (curBatchId) {
-    // 精确归组:同 batch_id
+  if (hasBatchIdColumn && curBatchId) {
     query = query.eq('batch_id', curBatchId);
   } else {
-    // Fallback:老数据无 batch_id,用 created_at ±5s 窗口
-    const t = new Date((cur as any).created_at).getTime();
+    // Fallback:无 batch_id 列、或当前 match 没归过 batch,用 ±5s 窗口
+    const t = curCreatedAt ? new Date(curCreatedAt).getTime() : Date.now();
     const lo = new Date(t - FALLBACK_WINDOW_MS).toISOString();
     const hi = new Date(t + FALLBACK_WINDOW_MS).toISOString();
-    query = query
-      .is('batch_id', null) // 不要把其他批次的精确归组结果也拉过来
-      .gte('created_at', lo)
-      .lte('created_at', hi);
+    query = query.gte('created_at', lo).lte('created_at', hi);
+    if (hasBatchIdColumn) {
+      // 当前没 batch_id 的老数据,跨批的精确归组也别拉进来
+      query = query.is('batch_id', null);
+    }
   }
 
   const { data } = await query.order('created_at', { ascending: true });
 
   // 去重:同 (company_name + position_category) 只保留最新的一条
-  // 防御场景:zombie 自愈、用户误双击提交、老数据窗口误圈等
   const byKey = new Map<string, any>();
   for (const m of data ?? []) {
     const offer = (m as any).user_offers;
@@ -73,7 +104,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       level: m.user_offers?.level,
       salary_min: m.user_offers?.salary_min,
       salary_max: m.user_offers?.salary_max,
-      // 对比所需:
       original_score: cd.original_score,
       corrected_score: cd.corrected_score,
       industry_factor: cd.factors?.industry,
@@ -88,7 +118,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       ai_senior_salary_mid: cd.ai_brief?.salary_range
         ? ((cd.ai_brief.salary_range.senior_low + cd.ai_brief.salary_range.senior_high) / 2) * 10_000
         : null,
-      // AI 公司级精化系数(与反推页 displayCorrected = corrected * ai_company_adjustment 对齐)
       ai_company_adjustment: cd.ai_brief?.correction?.company_adjustment ?? 1,
       match_level: cd.match_level,
       sample_size: cd.sample_size,
