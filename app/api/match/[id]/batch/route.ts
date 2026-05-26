@@ -1,16 +1,19 @@
 /**
  * GET /api/match/[id]/batch
- * 返回与当前 match「同一次提交」的所有 match(用于结果页 OfferTabs)。
+ * 返回与当前 match「同一次提交」的所有 match(用于结果页 OfferTabs / 对比 Modal)。
  *
- * matches 表没有 batch_id,用「同 user + 创建时间相近(±10s)」圈定:
- * 同一次 POST /api/match 里 N 个 offer 是毫秒级连续插入的,10s 窗口足够把它们圈在一起,
- * 又不会把用户上一次/下一次的提交混进来(两次提交间隔通常远超 10s)。
+ * 归组策略(按可靠性顺序):
+ *   1) batch_id 优先(POST /api/match 起统一写入,精确归组)
+ *   2) 老数据 batch_id 为 NULL → fallback 用 created_at ±5s 窗口
+ *
+ * 最后再做去重:同一 (company_name + position_category) 只保留 created_at 最新的一条。
+ * 这样即使 zombie 自愈或老数据窗口重叠,UI 上也只显示用户实际填的那几个 offer。
  */
 import { NextResponse } from 'next/server';
 import { apiRequireUser } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
-const WINDOW_MS = 10_000;
+const FALLBACK_WINDOW_MS = 5_000;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const user = await apiRequireUser();
@@ -19,28 +22,48 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const sb = createSupabaseServerClient();
   const { data: cur } = await sb
     .from('matches')
-    .select('id, created_at')
+    .select('id, created_at, batch_id')
     .eq('id', params.id)
     .eq('user_id', user.id)
     .maybeSingle();
   if (!cur) return NextResponse.json({ items: [] });
 
-  const t = new Date((cur as any).created_at).getTime();
-  const lo = new Date(t - WINDOW_MS).toISOString();
-  const hi = new Date(t + WINDOW_MS).toISOString();
+  const curBatchId = (cur as any).batch_id as string | null;
+  const SELECT_COLS =
+    'id, created_at, batch_id, status, correction_data, same_count, higher_count, lower_count, ' +
+    'user_offers(company_name, company_id, position_category, level, salary_min, salary_max)';
 
-  const { data } = await sb
-    .from('matches')
-    .select(
-      'id, created_at, status, correction_data, same_count, higher_count, lower_count, ' +
-        'user_offers(company_name, company_id, position_category, level, salary_min, salary_max)',
-    )
-    .eq('user_id', user.id)
-    .gte('created_at', lo)
-    .lte('created_at', hi)
-    .order('created_at', { ascending: true });
+  let query = sb.from('matches').select(SELECT_COLS).eq('user_id', user.id);
 
-  const items = (data ?? []).map((m: any) => {
+  if (curBatchId) {
+    // 精确归组:同 batch_id
+    query = query.eq('batch_id', curBatchId);
+  } else {
+    // Fallback:老数据无 batch_id,用 created_at ±5s 窗口
+    const t = new Date((cur as any).created_at).getTime();
+    const lo = new Date(t - FALLBACK_WINDOW_MS).toISOString();
+    const hi = new Date(t + FALLBACK_WINDOW_MS).toISOString();
+    query = query
+      .is('batch_id', null) // 不要把其他批次的精确归组结果也拉过来
+      .gte('created_at', lo)
+      .lte('created_at', hi);
+  }
+
+  const { data } = await query.order('created_at', { ascending: true });
+
+  // 去重:同 (company_name + position_category) 只保留最新的一条
+  // 防御场景:zombie 自愈、用户误双击提交、老数据窗口误圈等
+  const byKey = new Map<string, any>();
+  for (const m of data ?? []) {
+    const offer = (m as any).user_offers;
+    const key = `${offer?.company_name ?? ''}__${offer?.position_category ?? ''}`;
+    const prev = byKey.get(key);
+    if (!prev || new Date((m as any).created_at) > new Date(prev.created_at)) {
+      byKey.set(key, m);
+    }
+  }
+
+  const items = [...byKey.values()].map((m: any) => {
     const cd = m.correction_data ?? {};
     return {
       id: m.id,

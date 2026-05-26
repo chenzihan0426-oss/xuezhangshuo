@@ -139,6 +139,9 @@ export async function POST(req: NextRequest) {
   );
 
   // 1) 创建 N 个 matches 占位,拿到 id 先返回给前端,前端立刻能跳到 result/[id](页面会显示骨架屏)
+  // batch_id:同一次提交的 N 个 matches 共享一个 UUID,batch API 用它精确归组,
+  // 解决"跨提交被 created_at 窗口误圈"的问题。
+  const batchId = crypto.randomUUID();
   const matchRows: { id: string; offer: typeof offerRows[number] }[] = [];
   for (const offer of offerRows) {
     const { data, error } = await svc
@@ -146,6 +149,7 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: user.id,
         user_offer_id: offer.id,
+        batch_id: batchId,
         status: 'computing',
         matched_path_ids: [],
       })
