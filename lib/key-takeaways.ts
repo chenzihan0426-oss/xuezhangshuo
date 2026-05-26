@@ -292,10 +292,16 @@ export function sankeyFocus(opts: { paths: SeniorPath[] }): ChartFocus {
   };
 }
 
-export function pathsListFocus(opts: { totalCount: number; baselineCount: number }): ChartFocus {
+export function pathsListFocus(opts: { totalCount: number; baselineCount: number; highFitCount?: number }): ChartFocus {
+  if (typeof opts.highFitCount === 'number' && opts.highFitCount > 0) {
+    return {
+      text: `按"起点契合度"排序:前 ${opts.highFitCount} 位与你 offer 同行业 + 同公司档次(标"高契合"),最具参考价值;往下契合度递减,标"参考用"的师兄起点不同,只能看趋势。`,
+      tone: 'good',
+    };
+  }
   return {
-    text: `前几条是和你院校档次最接近的师兄(共 ${opts.baselineCount} 位),从他们的真实路径里挑 2-3 条做"剧本对照",比看平均数更有用。`,
-    tone: 'info',
+    text: `本批样本里和你 offer 起点(行业 + 公司档次)完全一致的师兄不多,建议优先看标"同行业起步"或"同 tier 起步"的几位;"参考用"标签的师兄起点不同,只能看大致趋势。`,
+    tone: 'warn',
   };
 }
 

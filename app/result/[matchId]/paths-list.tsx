@@ -25,6 +25,18 @@ const INDUSTRY_LABEL: Record<string, string> = {
   consumer_service: '消费服务',
 };
 
+/** 由 result-client 的 computeFit 写入,数字越大越契合用户的 offer 起点 */
+type ScoredPath = SeniorPath & { _fit?: number };
+
+function fitBadge(fit: number | undefined): { label: string; variant: 'success' | 'secondary' | 'warning' | 'outline' } {
+  if (fit === undefined) return { label: '相关', variant: 'outline' };
+  if (fit >= 130) return { label: '高契合 · 同行业同 tier', variant: 'success' };
+  if (fit >= 100) return { label: '同行业起步', variant: 'success' };
+  if (fit >= 50) return { label: '同 tier 起步', variant: 'secondary' };
+  if (fit >= 30) return { label: '同岗位类目', variant: 'secondary' };
+  return { label: '参考用 · 起点不同', variant: 'warning' };
+}
+
 export default function PathsList({
   paths,
   visibleCount,
@@ -32,7 +44,7 @@ export default function PathsList({
   onUpgradeClick,
   salaryScale = 1,
 }: {
-  paths: SeniorPath[];
+  paths: ScoredPath[];
   visibleCount: number;
   totalCount: number;
   onUpgradeClick: () => void;
@@ -58,13 +70,15 @@ export default function PathsList({
             const lastCompanyName = history[history.length - 1]?.company_name;
             const lastPositionName = history[history.length - 1]?.position_name;
             const isStartup = p.first_company_tier === 7;
+            const fit = fitBadge(p._fit);
+            const lowFit = (p._fit ?? 0) < 30;
             return (
               <button
                 key={p.id}
                 onClick={() => setSelected(p)}
                 className={`flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-brand-500 hover:bg-brand-50/30 ${
                   isStartup ? 'border-amber-300 bg-amber-50/30' : ''
-                }`}
+                } ${lowFit ? 'opacity-70' : ''}`}
               >
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-baseline gap-2">
@@ -72,6 +86,7 @@ export default function PathsList({
                       {isStartup && <span className="mr-1" aria-label="创业">🚀</span>}
                       匿名师兄 #{i + 1}
                     </span>
+                    <Badge variant={fit.variant}>{fit.label}</Badge>
                     {p.school_tier && (
                       <Badge variant="outline">
                         {schoolNameFor(p.id, p.school_tier)}

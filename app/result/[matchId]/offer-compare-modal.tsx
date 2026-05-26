@@ -32,6 +32,8 @@ interface BatchOffer {
   salary_max?: number;
   original_score?: number;
   corrected_score?: number;
+  /** AI 公司级精化系数,与反推页 displayCorrected = corrected * ai_company_adjustment 对齐 */
+  ai_company_adjustment?: number;
   industry_factor?: number;
   ai_risk?: number;
   cohort?: number;
@@ -42,6 +44,13 @@ interface BatchOffer {
   ai_senior_salary_mid?: number | null;
   match_level?: string;
   sample_size?: number;
+}
+
+/** 与反推页 result-client.tsx / correction-panel.tsx 一致的口径:校正分 = 规则基线 * AI 调整,限幅 [0,100] */
+function displayCorrectedOf(o: BatchOffer): number {
+  const base = o.corrected_score ?? 0;
+  const adj = o.ai_company_adjustment ?? 1;
+  return Math.round(Math.min(100, Math.max(0, base * adj)) * 10) / 10;
 }
 
 const DIMENSIONS = [
@@ -90,10 +99,12 @@ export default function OfferCompareModal({ activeMatchId }: { activeMatchId: st
 
   const dimsByOffer = completedOffers.map((o) => {
     const salaryRef = o.ai_senior_salary_mid ?? o.salary_p50 ?? 0;
+    const display = displayCorrectedOf(o);
     return {
       offer: o,
+      display, // 与反推页一致的"环境校正后 · 综合潜力"
       dims: {
-        potential: clamp(o.corrected_score ?? 0, 0, 100),
+        potential: clamp(display, 0, 100),
         salary: clamp((salaryRef / maxSalary) * 100, 0, 100),
         industry: clamp((o.industry_factor ?? 1) * 80, 0, 100), // 1.0 → 80,1.25 → 100
         ai_resilient: clamp((1 - (o.ai_risk ?? 0)) * 100, 0, 100),
@@ -103,10 +114,8 @@ export default function OfferCompareModal({ activeMatchId }: { activeMatchId: st
     };
   });
 
-  // 选出"综合潜力分最高"的 offer 作为推荐
-  const winner = [...dimsByOffer].sort(
-    (a, b) => (b.offer.corrected_score ?? 0) - (a.offer.corrected_score ?? 0),
-  )[0];
+  // 选出"综合潜力分最高"的 offer 作为推荐(用 displayCorrected,与反推页同源)
+  const winner = [...dimsByOffer].sort((a, b) => b.display - a.display)[0];
 
   const radarOption: any = {
     color: SERIES_COLORS,
@@ -198,7 +207,7 @@ export default function OfferCompareModal({ activeMatchId }: { activeMatchId: st
                 </tr>
               </thead>
               <tbody className="divide-y">
-                <Row label="综合潜力(校正分)" cells={completedOffers.map((o) => fmtScore(o.corrected_score, o.original_score))} highlightIdx={argMax(completedOffers, (o) => o.corrected_score ?? -1)} />
+                <Row label="综合潜力(校正分)" cells={completedOffers.map((o) => fmtScore(displayCorrectedOf(o), o.original_score))} highlightIdx={argMax(completedOffers, (o) => displayCorrectedOf(o))} />
                 <Row label="5 年中位年薪" cells={completedOffers.map((o) => formatSalary(o.ai_senior_salary_mid ?? o.salary_p50 ?? 0))} highlightIdx={argMax(completedOffers, (o) => o.ai_senior_salary_mid ?? o.salary_p50 ?? 0)} />
                 <Row label="行业景气因子" cells={completedOffers.map((o) => fmtMult(o.industry_factor))} highlightIdx={argMax(completedOffers, (o) => o.industry_factor ?? 0)} />
                 <Row label="AI 替代风险" cells={completedOffers.map((o) => `${((o.ai_risk ?? 0) * 100).toFixed(0)}%`)} highlightIdx={argMin(completedOffers, (o) => o.ai_risk ?? 1)} positiveLower />
@@ -321,19 +330,14 @@ function matchLevelLabel(level?: string): string {
 }
 
 function buildRecommendation(
-  list: { offer: BatchOffer; dims: Record<string, number> }[],
+  list: { offer: BatchOffer; display: number; dims: Record<string, number> }[],
 ): string {
   if (!list.length) return '';
-  const ranked = [...list].sort(
-    (a, b) => (b.offer.corrected_score ?? 0) - (a.offer.corrected_score ?? 0),
-  );
+  const ranked = [...list].sort((a, b) => b.display - a.display);
   const top = ranked[0];
   const runner = ranked[1];
-  const score = top.offer.corrected_score?.toFixed(1) ?? '-';
-  const gap =
-    runner && typeof runner.offer.corrected_score === 'number' && typeof top.offer.corrected_score === 'number'
-      ? top.offer.corrected_score - runner.offer.corrected_score
-      : 0;
+  const score = top.display.toFixed(1);
+  const gap = runner ? top.display - runner.display : 0;
 
   const strengths: string[] = [];
   if (top.dims.salary >= 75) strengths.push('薪资潜力');

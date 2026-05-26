@@ -65,6 +65,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       ai_senior_salary_mid: cd.ai_brief?.salary_range
         ? ((cd.ai_brief.salary_range.senior_low + cd.ai_brief.salary_range.senior_high) / 2) * 10_000
         : null,
+      // AI 公司级精化系数(与反推页 displayCorrected = corrected * ai_company_adjustment 对齐)
+      ai_company_adjustment: cd.ai_brief?.correction?.company_adjustment ?? 1,
       match_level: cd.match_level,
       sample_size: cd.sample_size,
       same_count: m.same_count ?? 0,

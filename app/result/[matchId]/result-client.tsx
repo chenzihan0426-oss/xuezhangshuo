@@ -107,13 +107,37 @@ export default function ResultClient({
     [filtered, baselineTier],
   );
 
-  // 师兄列表按"院校档次接近用户"排序:同档次优先,参考价值最高的排前面
+  // 师兄列表按"起点契合度"排序:
+  //   同行业 +100 · 同公司 tier +50 · 同岗位类目 +30 · 院校档次每差 1 级 -5
+  // 这样 L5 兜底("仅同岗位")带回来的不相关师兄会沉底,而不是混在前几条。
+  // 同时给每条路径打一个 fit 分,供 PathsList 显示"契合度"badge。
+  const offerIndustry = useMemo(
+    () =>
+      match?.correction_data?.offer_industry ??
+      userOffer?.first_industry ??
+      inferIndustry(userOffer?.company_id, allPaths),
+    [match?.correction_data, userOffer, allPaths],
+  );
+  const offerCompanyTier: number | undefined = userOffer?.company_tier;
+  const offerPositionCat: string | undefined = userOffer?.position_category;
+  const baseSchoolTier = userSchoolTier ?? baselineTier;
+
+  const computeFit = (p: SeniorPath): number => {
+    let s = 0;
+    if (offerIndustry && offerIndustry !== 'other' && p.first_industry === offerIndustry) s += 100;
+    if (offerCompanyTier && p.first_company_tier === offerCompanyTier) s += 50;
+    if (offerPositionCat && p.first_position_category === offerPositionCat) s += 30;
+    s -= Math.abs((p.school_tier ?? 3) - baseSchoolTier) * 5;
+    return s;
+  };
+
   const listPaths = useMemo(() => {
-    const base = userSchoolTier ?? baselineTier;
-    return [...filtered].sort(
-      (a, b) => Math.abs((a.school_tier ?? 3) - base) - Math.abs((b.school_tier ?? 3) - base),
-    );
-  }, [filtered, userSchoolTier, baselineTier]);
+    return [...filtered]
+      .map((p) => ({ p, fit: computeFit(p) }))
+      .sort((a, b) => b.fit - a.fit)
+      .map(({ p, fit }) => ({ ...p, _fit: fit } as SeniorPath & { _fit: number }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, offerIndustry, offerCompanyTier, offerPositionCat, baseSchoolTier]);
 
   // 缩放系数:把 mock 师兄薪资整体抬到 AI 市场量级(仅展示,保留分布形状)
   const salaryScale = useMemo(() => {
@@ -429,11 +453,17 @@ export default function ResultClient({
       {/* 单条路径列表 */}
       <div className="space-y-2">
         {(() => {
-          const f = pathsListFocus({ totalCount: listPaths.length, baselineCount: Math.min(visiblePathCount, listPaths.length) });
+          // 算高契合(_fit >= 100,即至少同行业 / 或同 tier+同岗位)的师兄数
+          const highFit = (listPaths as any[]).filter((p) => (p._fit ?? 0) >= 100).length;
+          const f = pathsListFocus({
+            totalCount: listPaths.length,
+            baselineCount: Math.min(visiblePathCount, listPaths.length),
+            highFitCount: highFit,
+          });
           return <ChartHighlight text={f.text} tone={f.tone} />;
         })()}
         <PathsList
-          paths={listPaths}
+          paths={listPaths as any}
           visibleCount={visiblePathCount}
           totalCount={listPaths.length}
           onUpgradeClick={() => setPaywallOpen(true)}
