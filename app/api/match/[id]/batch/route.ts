@@ -31,16 +31,46 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const { data } = await sb
     .from('matches')
-    .select('id, created_at, user_offers(company_name, company_id, position_category)')
+    .select(
+      'id, created_at, status, correction_data, same_count, higher_count, lower_count, ' +
+        'user_offers(company_name, company_id, position_category, level, salary_min, salary_max)',
+    )
     .eq('user_id', user.id)
     .gte('created_at', lo)
     .lte('created_at', hi)
     .order('created_at', { ascending: true });
 
-  const items = (data ?? []).map((m: any) => ({
-    id: m.id,
-    company_name: m.user_offers?.company_name ?? `#${m.user_offers?.company_id ?? ''}`,
-    position_category: m.user_offers?.position_category ?? '',
-  }));
+  const items = (data ?? []).map((m: any) => {
+    const cd = m.correction_data ?? {};
+    return {
+      id: m.id,
+      status: m.status,
+      company_name: m.user_offers?.company_name ?? `#${m.user_offers?.company_id ?? ''}`,
+      position_category: m.user_offers?.position_category ?? '',
+      level: m.user_offers?.level,
+      salary_min: m.user_offers?.salary_min,
+      salary_max: m.user_offers?.salary_max,
+      // 对比所需:
+      original_score: cd.original_score,
+      corrected_score: cd.corrected_score,
+      industry_factor: cd.factors?.industry,
+      ai_risk: cd.factors?.ai_risk,
+      cohort: cd.factors?.cohort,
+      personal_boost: cd.factors?.personal_boost,
+      offer_salary_factor: cd.factors?.offer_salary,
+      policy_event_count: cd.factors?.policy_events?.length ?? 0,
+      salary_p10: cd.salary_p10,
+      salary_p50: cd.salary_p50,
+      salary_p90: cd.salary_p90,
+      ai_senior_salary_mid: cd.ai_brief?.salary_range
+        ? ((cd.ai_brief.salary_range.senior_low + cd.ai_brief.salary_range.senior_high) / 2) * 10_000
+        : null,
+      match_level: cd.match_level,
+      sample_size: cd.sample_size,
+      same_count: m.same_count ?? 0,
+      higher_count: m.higher_count ?? 0,
+      lower_count: m.lower_count ?? 0,
+    };
+  });
   return NextResponse.json({ items });
 }

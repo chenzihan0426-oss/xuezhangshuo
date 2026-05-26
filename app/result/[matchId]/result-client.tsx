@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { ResultSkeleton } from './result-skeleton';
 import OfferTabs from './offer-tabs';
 import ThreeGroupChart from './three-group-chart';
@@ -17,8 +18,19 @@ import MatchLevelBanner from './match-level-banner';
 import FiltersBar from './filters-bar';
 import TimelineChart from './timeline-chart';
 import PathsList from './paths-list';
+import KeyTakeaways from './key-takeaways';
+import OfferCompareModal from './offer-compare-modal';
+import ChartHighlight from './chart-highlight';
 import { EMPTY_FILTERS, applyFilters, type PathFilters } from '@/lib/path-filters';
 import { generateInsights } from '@/lib/insights-engine';
+import {
+  generateTakeaways,
+  timelineFocus,
+  threeGroupFocus,
+  salaryTrendFocus,
+  sankeyFocus,
+  pathsListFocus,
+} from '@/lib/key-takeaways';
 import { PAYWALL } from '@/lib/constants';
 import { formatSalary, quantile, clamp } from '@/lib/utils';
 import { splitGroups } from '@/lib/match-helpers';
@@ -127,25 +139,45 @@ export default function ResultClient({
     [filtered, match?.correction_data, userOffer, allPaths, salaryScale],
   );
 
+  const takeaway = useMemo(
+    () =>
+      generateTakeaways({
+        paths: filtered,
+        correction: match?.correction_data,
+        insights,
+        aiSeniorSalaryMid: aiBrief?.salary_range
+          ? ((aiBrief.salary_range.senior_low + aiBrief.salary_range.senior_high) / 2) * 10_000
+          : undefined,
+        salaryScale,
+      }),
+    [filtered, match?.correction_data, insights, aiBrief, salaryScale],
+  );
+
   if (!match) return null;
   if (match.status === 'computing') {
     return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 text-center text-sm text-brand-700">
-          正在反推这个 offer,大概 5 秒…(已加载脱敏后的师兄路径)
+      <div className="min-h-screen -my-6 bg-slate-50">
+        <div className="mx-auto max-w-7xl space-y-4 px-4 pt-6 md:px-8">
+          <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 text-center text-sm text-brand-700">
+            正在反推这个 offer,大概 5 秒…(已加载脱敏后的师兄路径)
+          </div>
+          <ResultSkeleton />
         </div>
-        <ResultSkeleton />
       </div>
     );
   }
   if (match.status === 'failed') {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm">
-        <p className="font-semibold text-destructive">反推失败</p>
-        <p className="mt-1 text-muted-foreground">{match.error_message}</p>
-        <Button asChild className="mt-4">
-          <Link href="/input">重新提交</Link>
-        </Button>
+      <div className="min-h-screen -my-6 bg-slate-50">
+        <div className="mx-auto max-w-3xl px-4 pt-12 md:px-8">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm">
+            <p className="font-semibold text-destructive">反推失败</p>
+            <p className="mt-1 text-muted-foreground">{match.error_message}</p>
+            <Button asChild className="mt-4">
+              <Link href="/input">重新提交</Link>
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -158,30 +190,120 @@ export default function ResultClient({
     ? { low: aiBrief.salary_range.senior_low * 10_000, high: aiBrief.salary_range.senior_high * 10_000 }
     : undefined;
 
+  // 暗色 hero 用:校正分大数字 + 时代红利 delta + 风控带
+  const correctedScore = cd.corrected_score;
+  const originalScore = cd.original_score;
+  const delta =
+    typeof correctedScore === 'number' && typeof originalScore === 'number'
+      ? correctedScore - originalScore
+      : 0;
+  const totalSample = (match.same_count ?? 0) + (match.higher_count ?? 0) + (match.lower_count ?? 0);
+  const industryFactor: number | undefined = cd.factors?.industry;
+  const aiRisk: number | undefined = cd.factors?.ai_risk;
+  const policyEvents: string[] = cd.factors?.policy_events ?? [];
+
   return (
-    <div className="space-y-6">
-      {/* offer 概要 */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen -my-6 bg-slate-50 pb-20">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 pt-6 md:px-8">
+      {/* 顶部操作栏 */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" asChild className="-ml-3 text-slate-500 hover:text-slate-900">
+          <Link href="/profile">
+            <ArrowLeft size={16} className="mr-1.5" /> 返回我的档案
+          </Link>
+        </Button>
+        <div className="flex items-center gap-2">
+          <ShareCard matchId={matchId} />
+          <OfferCompareModal activeMatchId={matchId} />
+          <Button asChild size="sm" className="bg-brand-600 hover:bg-brand-700">
+            <Link href="/input">新增 Offer</Link>
+          </Button>
+        </div>
+      </div>
+
+      {/* 报告头部仪表盘(暗色 hero + 校正分 + 风控带) */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="bg-slate-900 px-6 py-8 text-white md:px-10">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <CardTitle className="text-base">
-                {userOffer?.company_name ?? `#${userOffer?.company_id}`}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {userOffer?.position_category} · {userOffer?.level}
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/20 text-emerald-400">
+                  报告生成完毕
+                </Badge>
+                <span className="text-xs text-slate-400">ID: {matchId.split('-')[0].toUpperCase()}</span>
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                {userOffer?.company_name ?? `#${userOffer?.company_id}`} ·{' '}
+                {userOffer?.position_category ?? '未知岗位'}
+              </h1>
+              <p className="mt-2 text-sm text-slate-400">
+                {userOffer?.level}
                 {userOffer?.salary_min
                   ? ` · ${formatSalary(userOffer.salary_min)} - ${formatSalary(userOffer.salary_max)}`
                   : ''}
+                {totalSample > 0 && ` · 基于 ${totalSample} 份脱敏履历的 5 年期对标`}
               </p>
             </div>
-            <div className="flex gap-2">
-              <ShareCard matchId={matchId} />
+
+            <div className="min-w-[200px] rounded-lg border border-slate-700/50 bg-slate-800/50 p-4 text-right backdrop-blur-sm">
+              <div className="text-xs font-medium text-slate-400">环境校正后 · 综合潜力分</div>
+              <div className="mt-1 flex items-baseline justify-end gap-1">
+                <span className="text-4xl font-black text-white">
+                  {typeof correctedScore === 'number' ? correctedScore.toFixed(1) : '-'}
+                </span>
+                <span className="text-sm text-emerald-400">/ 100</span>
+              </div>
+              <div className="mt-1 flex items-center justify-end gap-1 text-xs text-slate-500">
+                <span>时代红利扣减:</span>
+                <span className={delta < 0 ? 'text-amber-400' : 'text-emerald-400'}>
+                  {delta > 0 ? '+' : ''}
+                  {delta.toFixed(1)} 分
+                </span>
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* 风控摘要带 */}
+        <div className="border-t border-slate-100 bg-amber-50/50">
+          <div className="flex flex-col md:flex-row">
+            <div className="flex items-center gap-3 border-b border-amber-200/50 p-4 md:w-1/3 md:border-b-0 md:border-r">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <AlertCircle size={20} />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">宏观环境风控与算法介入</div>
+                <div className="text-xs text-amber-700/80">自动剔除不可复制的时代红利</div>
+              </div>
+            </div>
+            <div className="p-4 text-sm leading-relaxed text-slate-700 md:w-2/3">
+              <span className="font-semibold text-amber-800">环境校正提示:</span>
+              {industryFactor !== undefined && (
+                <>
+                  {' '}行业景气因子 <strong className="text-slate-900">{industryFactor.toFixed(2)}×</strong>
+                  {industryFactor < 1 ? '(回落)' : '(上行)'}
+                </>
+              )}
+              {typeof aiRisk === 'number' && aiRisk > 0 && (
+                <>
+                  ;AI 替代风险扣减 <strong className="text-slate-900">{(aiRisk * 100).toFixed(0)}%</strong>
+                </>
+              )}
+              {policyEvents.length > 0 && (
+                <>
+                  ;政策事件 <strong className="text-slate-900">{policyEvents.length} 项</strong>
+                </>
+              )}
+              。系统已自动将以上因素折损,详见下方校正面板。
+            </div>
+          </div>
+        </div>
+
+        {/* Offer 切页(多 offer 时) */}
+        <div className="border-t border-slate-100 px-6 py-3 md:px-10">
           <OfferTabs activeMatchId={matchId} />
-        </CardHeader>
-      </Card>
+        </div>
+      </div>
 
       {/* 诚实声明:虚构 / 字典外公司没找到数据时,明确告知是相似公司参考 */}
       <MatchLevelBanner
@@ -189,6 +311,9 @@ export default function ResultClient({
         matchLevel={cd.match_level}
         sampleSize={cd.sample_size}
       />
+
+      {/* 🌟 TL;DR 核心结论(一眼看完) */}
+      <KeyTakeaways takeaway={takeaway} />
 
       {/* 筛选 */}
       <FiltersBar
@@ -199,9 +324,12 @@ export default function ResultClient({
       />
 
       {/* ⭐ 你需要警惕的事(规则引擎) */}
-      <InsightsPanel insights={insights} />
+      <div id="section-insights" className="scroll-mt-20">
+        <InsightsPanel insights={insights} />
+      </div>
 
       {/* ⭐ 环境校正(决赛胜负手) */}
+      <div id="section-correction" className="scroll-mt-20">
       <CorrectionPanel
         original={cd.original_score ?? 0}
         corrected={cd.corrected_score ?? 0}
@@ -219,54 +347,79 @@ export default function ResultClient({
         aiBrief={aiBrief}
         onAiRetry={() => setAiNonce((n) => n + 1)}
       />
+      </div>
 
       {/* 5 年时间轴 */}
+      <div id="section-timeline" className="scroll-mt-20">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">5 年时间轴:他们每年走到哪一步</CardTitle>
-          <p className="text-xs text-muted-foreground">实线 = 年薪走势,虚线 = 平均职级</p>
+        <CardHeader className="space-y-2">
+          <div>
+            <CardTitle className="text-base">5 年时间轴:他们每年走到哪一步</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">实线 = 年薪走势,虚线 = 平均职级</p>
+          </div>
+          {(() => {
+            const f = timelineFocus({ same, higher, lower, salaryScale });
+            return <ChartHighlight text={f.text} tone={f.tone} />;
+          })()}
         </CardHeader>
         <CardContent>
           <TimelineChart same={same} higher={higher} lower={lower} salaryScale={salaryScale} />
         </CardContent>
       </Card>
+      </div>
 
-      {/* 三组对比 */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">同 / 高 / 低背景 5 年后的样子</CardTitle>
-            <div className="flex gap-2 text-xs">
-              <Badge variant="secondary">同 {same.length}</Badge>
-              <Badge variant="outline">高 {higher.length}</Badge>
-              <Badge variant="outline">低 {lower.length}</Badge>
+      {/* 三组对比 + 薪资分布(桌面端 2 列横铺) */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">同 / 高 / 低背景 5 年后的样子</CardTitle>
+              <div className="flex gap-2 text-xs">
+                <Badge variant="secondary">同 {same.length}</Badge>
+                <Badge variant="outline">高 {higher.length}</Badge>
+                <Badge variant="outline">低 {lower.length}</Badge>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ThreeGroupChart
-            same={same.length}
-            higher={higher.length}
-            lower={lower.length}
-            paths={filtered}
-          />
-        </CardContent>
-      </Card>
+            {(() => {
+              const f = threeGroupFocus({ same: same.length, higher: higher.length, lower: lower.length });
+              return <ChartHighlight text={f.text} tone={f.tone} />;
+            })()}
+          </CardHeader>
+          <CardContent>
+            <ThreeGroupChart
+              same={same.length}
+              higher={higher.length}
+              lower={lower.length}
+              paths={filtered}
+            />
+          </CardContent>
+        </Card>
 
-      {/* 薪资分布 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">5 年薪资分布</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SalaryTrend paths={filtered} salaryScale={salaryScale} />
-        </CardContent>
-      </Card>
+        <Card id="section-salary" className="scroll-mt-20">
+          <CardHeader className="space-y-2">
+            <CardTitle className="text-base">5 年薪资分布</CardTitle>
+            {(() => {
+              const aiMid = aiBrief?.salary_range
+                ? ((aiBrief.salary_range.senior_low + aiBrief.salary_range.senior_high) / 2) * 10_000
+                : undefined;
+              const f = salaryTrendFocus({ paths: filtered, salaryScale, aiMid });
+              return <ChartHighlight text={f.text} tone={f.tone} />;
+            })()}
+          </CardHeader>
+          <CardContent>
+            <SalaryTrend paths={filtered} salaryScale={salaryScale} />
+          </CardContent>
+        </Card>
+      </div>
 
       {/* 行业流向 */}
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-2">
           <CardTitle className="text-base">他们去了哪里(行业流向)</CardTitle>
+          {(() => {
+            const f = sankeyFocus({ paths: filtered });
+            return <ChartHighlight text={f.text} tone={f.tone} />;
+          })()}
         </CardHeader>
         <CardContent>
           <SankeyFlow paths={filtered} />
@@ -274,13 +427,19 @@ export default function ResultClient({
       </Card>
 
       {/* 单条路径列表 */}
-      <PathsList
-        paths={listPaths}
-        visibleCount={visiblePathCount}
-        totalCount={listPaths.length}
-        onUpgradeClick={() => setPaywallOpen(true)}
-        salaryScale={salaryScale}
-      />
+      <div className="space-y-2">
+        {(() => {
+          const f = pathsListFocus({ totalCount: listPaths.length, baselineCount: Math.min(visiblePathCount, listPaths.length) });
+          return <ChartHighlight text={f.text} tone={f.tone} />;
+        })()}
+        <PathsList
+          paths={listPaths}
+          visibleCount={visiblePathCount}
+          totalCount={listPaths.length}
+          onUpgradeClick={() => setPaywallOpen(true)}
+          salaryScale={salaryScale}
+        />
+      </div>
 
       {/* 二级 CTA */}
       <div className="flex flex-col items-center gap-3 py-4">
@@ -290,6 +449,7 @@ export default function ResultClient({
       </div>
 
       <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      </div>
     </div>
   );
 }
