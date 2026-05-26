@@ -119,6 +119,52 @@ INSERT INTO companies (name, tier, industry) VALUES
   -- 互联网金融 (T1/T2)
   ('蚂蚁集团',     1, 'finance'),
   ('陆金所',       2, 'finance'),
+  -- 外资投行 / 顶级 PE / 政策性银行 / 互联网银行 (T1 顶部)
+  ('高盛',         1, 'finance'),
+  ('摩根士丹利',   1, 'finance'),
+  ('摩根大通',     1, 'finance'),
+  ('瑞银',         1, 'finance'),
+  ('高瓴资本',     1, 'finance'),
+  ('国家开发银行', 1, 'finance'),
+  ('微众银行',     1, 'finance'),
+  -- 二线大型券商扩 (T2)
+  ('国信证券',     2, 'finance'),
+  ('中国银河',     2, 'finance'),
+  ('中泰证券',     2, 'finance'),
+  ('长江证券',     2, 'finance'),
+  ('光大证券',     2, 'finance'),
+  ('方正证券',     2, 'finance'),
+  ('东方财富',     2, 'finance'),
+  ('兴业证券',     2, 'finance'),
+  -- 政策性银行 (T2)
+  ('中国进出口银行',     2, 'finance'),
+  ('中国农业发展银行',   2, 'finance'),
+  -- 头部城商行 (T2)
+  ('北京银行',     2, 'finance'),
+  ('上海银行',     2, 'finance'),
+  ('江苏银行',     2, 'finance'),
+  ('宁波银行',     2, 'finance'),
+  ('南京银行',     2, 'finance'),
+  ('杭州银行',     2, 'finance'),
+  -- 股份行扩 (T2)
+  ('广发银行',     2, 'finance'),
+  ('华夏银行',     2, 'finance'),
+  -- 保险扩 (T2)
+  ('中国人保',     2, 'finance'),
+  ('泰康保险',     2, 'finance'),
+  ('友邦保险',     2, 'finance'),
+  ('阳光保险',     2, 'finance'),
+  -- 公募基金扩 (T2)
+  ('富国基金',     2, 'finance'),
+  ('博时基金',     2, 'finance'),
+  ('招商基金',     2, 'finance'),
+  ('工银瑞信',     2, 'finance'),
+  ('建信基金',     2, 'finance'),
+  -- 互金 / 支付 / 信托 (T2)
+  ('京东金融',     2, 'finance'),
+  ('度小满金融',   2, 'finance'),
+  ('中信信托',     2, 'finance'),
+  ('平安信托',     2, 'finance'),
   ('中国移动',     5, 'telecom'),
   ('国家电网',     5, 'energy'),
   ('恒大',         4, 'real_estate'),
