@@ -6,7 +6,7 @@
  * 不重新计算,直接读已落库的校正结果,保证和单页一致。
  */
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ReactECharts from 'echarts-for-react';
 import { GitCompare, Trophy } from 'lucide-react';
@@ -67,10 +67,11 @@ const SERIES_COLORS = [CHART_COLORS.brand, CHART_COLORS.emerald, CHART_COLORS.am
 export default function OfferCompareModal({ activeMatchId }: { activeMatchId: string }) {
   const [open, setOpen] = useState(false);
   const [offers, setOffers] = useState<BatchOffer[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  /** 正在联网补齐 AI 薪资的 offer 数量 */
+  const [briefBackfilling, setBriefBackfilling] = useState(0);
   const router = useRouter();
 
-  // 加载 batch(只在打开时拉,但顶部按钮显示需要判断数量,故首次挂载也拉一次小数据)
+  // 1) 挂载时先拉一次,决定要不要显示"对比 N 个 Offer"按钮
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/match/${activeMatchId}/batch`)
@@ -82,6 +83,40 @@ export default function OfferCompareModal({ activeMatchId }: { activeMatchId: st
       cancelled = true;
     };
   }, [activeMatchId]);
+
+  // 2) 打开 Modal 时补齐 AI 薪资:对每个缺 ai_senior_salary_mid 的 offer 主动触发 brief 生成,
+  //    完成后 refetch batch,让 Modal 显示和反推页同源的 AI 联网薪资。
+  //    解决"反推页 75 万 vs Modal 22.6 万"—— 仅打开过的 offer 才有 AI brief。
+  // attemptedRef 记录已尝试过补齐的 offer id,防止 brief 失败时反复触发(useEffect 无限循环)。
+  const attemptedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open || !offers) return;
+    const needBrief = offers.filter(
+      (o) =>
+        o.status === 'completed' &&
+        !o.ai_senior_salary_mid &&
+        !attemptedRef.current.has(o.id),
+    );
+    if (!needBrief.length) return;
+    needBrief.forEach((o) => attemptedRef.current.add(o.id));
+
+    let cancelled = false;
+    setBriefBackfilling(needBrief.length);
+    Promise.allSettled(
+      needBrief.map((o) => fetch(`/api/match/${o.id}/brief`).then((r) => r.json()).catch(() => null)),
+    )
+      .then(() => fetch(`/api/match/${activeMatchId}/batch`))
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setOffers(d.items ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setBriefBackfilling(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, offers, activeMatchId]);
 
   const completedOffers = useMemo(
     () => (offers ?? []).filter((o) => o.status === 'completed' && typeof o.corrected_score === 'number'),
@@ -175,6 +210,13 @@ export default function OfferCompareModal({ activeMatchId }: { activeMatchId: st
               所有维度都基于"环境校正后"的可比口径,数字越大越好。
             </DialogDescription>
           </DialogHeader>
+
+          {briefBackfilling > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-sky-500" />
+              正在联网核对 {briefBackfilling} 个 offer 的市场薪资,让对比口径完全统一…(约 10-30 秒)
+            </div>
+          )}
 
           {/* 一句话推荐 */}
           <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
