@@ -15,14 +15,10 @@ export default function CheckoutPage() {
 
   async function fakePaid() {
     setStatus('paid');
-    await fetch('/api/order/callback', {
+    await fetch('/api/order/mock-pay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        order_id: orderId,
-        payment_transaction_id: `mock_${Date.now()}`,
-        status: 'paid',
-      }),
+      body: JSON.stringify({ order_id: orderId }),
     });
     setTimeout(() => router.push('/profile'), 1200);
   }

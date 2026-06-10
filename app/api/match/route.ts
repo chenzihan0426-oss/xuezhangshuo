@@ -78,16 +78,23 @@ export async function POST(req: NextRequest) {
   const sb = createSupabaseServerClient();
   const svc = createSupabaseServiceClient();
 
-  // 写一次 background 到 users(覆盖式)
-  await sb.from('users').update({
-    school_id: parsed.data.background.school_id,
-    school_tier: parsed.data.background.school_tier,
-    major_id: parsed.data.background.major_id,
-    major_category: parsed.data.background.major_category,
-    education_level: parsed.data.background.education_level,
-    graduation_year: parsed.data.background.graduation_year,
-    gpa_band: parsed.data.background.gpa_band,
-  }).eq('id', user.id);
+  // 写一次 background 到 users(覆盖式)。
+  // 用 service client upsert:users 行可能还不存在(匿名/短信首登),update 会匹配 0 行静默丢失,
+  // 导致 zombie 自愈读不到 background
+  const { error: bgErr } = await svc.from('users').upsert(
+    {
+      id: user.id,
+      school_id: parsed.data.background.school_id,
+      school_tier: parsed.data.background.school_tier,
+      major_id: parsed.data.background.major_id,
+      major_category: parsed.data.background.major_category,
+      education_level: parsed.data.background.education_level,
+      graduation_year: parsed.data.background.graduation_year,
+      gpa_band: parsed.data.background.gpa_band,
+    },
+    { onConflict: 'id' },
+  );
+  if (bgErr) console.error('[match] users background upsert failed', bgErr);
 
   // 落 offers,得到 db id(过滤掉 schema-only 字段:company_tier / first_industry
   // 都是匹配用的临时字段,user_offers 表 schema 不持久化)
