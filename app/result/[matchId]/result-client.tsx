@@ -100,8 +100,23 @@ export default function ResultClient({
     return [...counter.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 3;
   }, [allPaths, userSchoolTier]);
 
-  // 先应用 filter,再拆三组
-  const filtered = useMemo(() => applyFilters(allPaths, filters), [allPaths, filters]);
+  // 缩放系数:把 mock 师兄薪资整体抬到 AI 市场量级(仅展示,保留分布形状)
+  const salaryScale = useMemo(() => {
+    const sr = aiBrief?.salary_range;
+    if (!sr) return 1;
+    const aiMedYuan = ((sr.senior_low + sr.senior_high) / 2) * 10_000;
+    const mockSalaries = allPaths.map((p: any) => p.five_year_salary ?? 0).filter((s: number) => s > 0);
+    if (!mockSalaries.length) return 1;
+    const mockMed = quantile(mockSalaries, 0.5);
+    if (mockMed <= 0) return 1;
+    return clamp(aiMedYuan / mockMed, 0.2, 5);
+  }, [aiBrief, allPaths]);
+
+  // 先应用 filter,再拆三组(薪资阈值与展示同口径,见 applyFilters)
+  const filtered = useMemo(
+    () => applyFilters(allPaths, filters, salaryScale),
+    [allPaths, filters, salaryScale],
+  );
   const { same, higher, lower } = useMemo(
     () => splitGroups(filtered, baselineTier),
     [filtered, baselineTier],
@@ -139,42 +154,43 @@ export default function ResultClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, offerIndustry, offerCompanyTier, offerPositionCat, baseSchoolTier]);
 
-  // 缩放系数:把 mock 师兄薪资整体抬到 AI 市场量级(仅展示,保留分布形状)
-  const salaryScale = useMemo(() => {
-    const sr = aiBrief?.salary_range;
-    if (!sr) return 1;
-    const aiMedYuan = ((sr.senior_low + sr.senior_high) / 2) * 10_000;
-    const mockSalaries = allPaths.map((p: any) => p.five_year_salary ?? 0).filter((s: number) => s > 0);
-    if (!mockSalaries.length) return 1;
-    const mockMed = quantile(mockSalaries, 0.5);
-    if (mockMed <= 0) return 1;
-    return clamp(aiMedYuan / mockMed, 0.2, 5);
-  }, [aiBrief, allPaths]);
+  // AI 公司级精化后的展示用校正分,与 CorrectionPanel/对比 Modal 同公式
+  // (hero 大数字、TL;DR、insights 必须用同一个值,否则同页出现两个"综合潜力分")
+  const aiAdjustment = aiBrief?.correction?.company_adjustment ?? 1;
+  const displayCorrection = useMemo(() => {
+    const c = match?.correction_data;
+    if (!c || typeof c.corrected_score !== 'number') return c;
+    return {
+      ...c,
+      corrected_score: Math.round(Math.min(100, Math.max(0, c.corrected_score * aiAdjustment)) * 10) / 10,
+    };
+  }, [match?.correction_data, aiAdjustment]);
 
   const insights = useMemo(
     () =>
       generateInsights({
         paths: filtered,
-        correction: match?.correction_data,
-        offerIndustry: inferIndustry(userOffer?.company_id, allPaths),
+        correction: displayCorrection,
+        // 复用统一口径(correction_data 优先),不再自己重新推断
+        offerIndustry,
         offerPositionCategory: userOffer?.position_category,
         salaryScale,
       }),
-    [filtered, match?.correction_data, userOffer, allPaths, salaryScale],
+    [filtered, displayCorrection, offerIndustry, userOffer, salaryScale],
   );
 
   const takeaway = useMemo(
     () =>
       generateTakeaways({
         paths: filtered,
-        correction: match?.correction_data,
+        correction: displayCorrection,
         insights,
         aiSeniorSalaryMid: aiBrief?.salary_range
           ? ((aiBrief.salary_range.senior_low + aiBrief.salary_range.senior_high) / 2) * 10_000
           : undefined,
         salaryScale,
       }),
-    [filtered, match?.correction_data, insights, aiBrief, salaryScale],
+    [filtered, displayCorrection, insights, aiBrief, salaryScale],
   );
 
   if (!match) return null;
@@ -214,8 +230,8 @@ export default function ResultClient({
     ? { low: aiBrief.salary_range.senior_low * 10_000, high: aiBrief.salary_range.senior_high * 10_000 }
     : undefined;
 
-  // 暗色 hero 用:校正分大数字 + 时代红利 delta + 风控带
-  const correctedScore = cd.corrected_score;
+  // 暗色 hero 用:校正分大数字 + 时代红利 delta + 风控带(用 AI 精化后的展示值,与校正面板一致)
+  const correctedScore = displayCorrection?.corrected_score;
   const originalScore = cd.original_score;
   const delta =
     typeof correctedScore === 'number' && typeof originalScore === 'number'
@@ -410,12 +426,7 @@ export default function ResultClient({
             })()}
           </CardHeader>
           <CardContent>
-            <ThreeGroupChart
-              same={same.length}
-              higher={higher.length}
-              lower={lower.length}
-              paths={filtered}
-            />
+            <ThreeGroupChart same={same} higher={higher} lower={lower} salaryScale={salaryScale} />
           </CardContent>
         </Card>
 

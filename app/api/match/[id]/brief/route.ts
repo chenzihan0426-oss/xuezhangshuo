@@ -28,7 +28,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .eq('id', params.id)
     .eq('user_id', user.id)
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[match/[id]/brief]', error);
+    return NextResponse.json({ error: 'internal' }, { status: 500 });
+  }
   if (!match) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const cd = (match as any).correction_data ?? {};

@@ -15,15 +15,15 @@ export default function ThreeGroupChart({
   same,
   higher,
   lower,
-  paths,
+  salaryScale = 1,
 }: {
-  same: number;
-  higher: number;
-  lower: number;
-  paths: any[];
+  same: any[];
+  higher: any[];
+  lower: any[];
+  salaryScale?: number;
 }) {
   const isMobile = useIsMobile();
-  if (!paths.length) {
+  if (!same.length && !higher.length && !lower.length) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
         当前筛选下没有数据
@@ -31,26 +31,15 @@ export default function ThreeGroupChart({
     );
   }
 
-  const sameSalary = mean(
-    paths.filter((p) => p.school_tier === paths[0]?.school_tier).map((p) => p.five_year_salary ?? 0),
-  );
-  const higherSalary = mean(
-    paths
-      .filter((p) => (p.school_tier ?? 5) < (paths[0]?.school_tier ?? 5))
-      .map((p) => p.five_year_salary ?? 0),
-  );
-  const lowerSalary = mean(
-    paths
-      .filter((p) => (p.school_tier ?? 5) > (paths[0]?.school_tier ?? 5))
-      .map((p) => p.five_year_salary ?? 0),
-  );
+  // 薪资与人数必须同一口径:都从分好组的数组算,空组薪资置 null(不画点、不显示);
+  // 乘 salaryScale 与同屏 Timeline/薪资分布/列表对齐
+  const groupSalary = (group: any[]): number | null =>
+    group.length
+      ? Math.round((mean(group.map((p) => p.five_year_salary ?? 0)) * salaryScale) / 10000)
+      : null;
 
-  const counts = [higher, same, lower];
-  const salaries = [
-    Math.round(higherSalary / 10000),
-    Math.round(sameSalary / 10000),
-    Math.round(lowerSalary / 10000),
-  ];
+  const counts = [higher.length, same.length, lower.length];
+  const salaries = [groupSalary(higher), groupSalary(same), groupSalary(lower)];
 
   const option = {
     ...baseOption(),

@@ -53,6 +53,11 @@ export function mean(values: number[]): number {
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
+/** PostgREST ilike 的通配符转义:防止用户输入 % _ 注入模糊匹配、逗号破坏查询语法 */
+export function escapeIlike(q: string): string {
+  return q.replace(/[\\%_]/g, '\\$&').replace(/,/g, ' ');
+}
+
 /** Top-N 频次统计 */
 export function topNCounts<T>(items: T[], keyOf: (x: T) => string | number, n = 3) {
   const counter = new Map<string | number, number>();

@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
 
   const sb = createSupabaseServerClient();
   const { error } = await sb.auth.signInWithOtp({ phone: parsed.data.phone });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[auth/send-sms]', error);
+    return NextResponse.json({ error: 'sms_failed' }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

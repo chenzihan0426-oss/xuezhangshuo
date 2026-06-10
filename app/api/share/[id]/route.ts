@@ -8,11 +8,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const svc = createSupabaseServiceClient();
   const { data, error } = await svc
     .from('matches')
-    .select('id, same_count, higher_count, lower_count, correction_data, user_offers(*), created_at')
+    // 显式列字段:user_offers(*) 会把 user_id 和精确薪资一起带出去,分享卡片用不到
+    .select(
+      'id, same_count, higher_count, lower_count, correction_data, user_offers(company_id, company_name, position_category, level), created_at',
+    )
     .eq('id', params.id)
     .maybeSingle();
   if (error || !data) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  // 不返回 user_id
   return NextResponse.json({
     id: data.id,
     counts: { same: data.same_count, higher: data.higher_count, lower: data.lower_count },

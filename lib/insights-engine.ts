@@ -4,7 +4,7 @@
  * 纯函数:输入 paths + correction,输出 1-5 条 actionable insights。
  * 完全规则化,不依赖 LLM,保证可解释、可复现。
  */
-import { AI_RISK_TABLE, COMPANY_TIER_LABELS, INDUSTRY_INDEX, LEVEL_ORDER } from './constants';
+import { AI_RISK_TABLE, COMPANY_TIER_LABELS, INDUSTRY_INDEX, INDUSTRY_LABEL, LEVEL_ORDER } from './constants';
 import type { CorrectionResult, SeniorPath } from './types';
 import { mean, quantile } from './utils';
 
@@ -263,8 +263,11 @@ export function generateInsights(opts: {
   }
 
   // 13) 城市集中度(以 path_history 中能推断的为准 —— 这里用 company_tier 5/6 作为政企城市代理)
-  // 数据 mock 里没有城市字段,先用一个粗略代理:tier 5/6 占比高 → 推断为政企城市
-  const govLike = paths.filter((p) => (p.five_year_company_tier ?? 0) >= 5).length;
+  // 数据 mock 里没有城市字段,先用一个粗略代理:tier 5/6 占比高 → 推断为政企城市。
+  // 注意 tier 是类别不是有序档次,7=创业公司,不能用 >= 截断
+  const govLike = paths.filter(
+    (p) => p.five_year_company_tier === 5 || p.five_year_company_tier === 6,
+  ).length;
   const govRate = paths.length ? govLike / paths.length : 0;
   if (paths.length >= 30 && govRate >= 0.4) {
     insights.push({
@@ -371,20 +374,7 @@ function dominantSwitchTarget(paths: SeniorPath[]): string | null {
 }
 
 function labelIndustry(key: string): string {
-  const map: Record<string, string> = {
-    internet: '互联网',
-    finance: '金融',
-    education_training: '教培',
-    real_estate: '地产',
-    auto_ev: '新能源车',
-    tech_hardware: '硬件',
-    telecom: '通信',
-    energy: '能源',
-    consulting: '咨询',
-    startup: '创业',
-    consumer_service: '消费服务',
-  };
-  return map[key] ?? key;
+  return INDUSTRY_LABEL[key] ?? key;
 }
 
 export function _internals_for_testing() {

@@ -11,20 +11,6 @@ import { formatSalary } from '@/lib/utils';
 import type { SeniorPath } from '@/lib/types';
 import PathDetailModal from './path-detail-modal';
 
-const INDUSTRY_LABEL: Record<string, string> = {
-  internet: '互联网',
-  finance: '金融',
-  tech_hardware: '硬件',
-  education_training: '教培',
-  real_estate: '地产',
-  auto_ev: '新能源车',
-  telecom: '通信',
-  energy: '能源',
-  consulting: '咨询',
-  startup: '创业',
-  consumer_service: '消费服务',
-};
-
 /** 由 result-client 的 computeFit 写入,数字越大越契合用户的 offer 起点 */
 type ScoredPath = SeniorPath & { _fit?: number };
 
@@ -111,7 +97,11 @@ export default function PathsList({
                     <Badge variant="secondary">
                       {LEVEL_LABELS[p.five_year_level ?? 'mid']}
                     </Badge>
-                    <Badge variant="secondary">{formatSalary(Math.round((p.five_year_salary ?? 0) * salaryScale))}</Badge>
+                    <Badge variant="secondary">
+                      {p.five_year_salary
+                        ? formatSalary(Math.round(p.five_year_salary * salaryScale))
+                        : '-'}
+                    </Badge>
                     {p.job_changes > 0 && <Badge variant="warning">跳 {p.job_changes} 次</Badge>}
                     {p.industry_changes > 0 && (
                       <Badge variant="warning">换行 {p.industry_changes} 次</Badge>

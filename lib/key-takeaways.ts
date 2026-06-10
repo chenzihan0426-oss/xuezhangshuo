@@ -6,6 +6,7 @@
  */
 import type { CorrectionResult, SeniorPath } from './types';
 import type { Insight } from './insights-engine';
+import { INDUSTRY_LABEL } from './constants';
 import { quantile } from './utils';
 
 export type Verdict = 'good' | 'neutral' | 'bad';
@@ -306,18 +307,5 @@ export function pathsListFocus(opts: { totalCount: number; baselineCount: number
 }
 
 function labelIndustryQuick(key: string): string {
-  const map: Record<string, string> = {
-    internet: '互联网',
-    finance: '金融',
-    education_training: '教培',
-    real_estate: '地产',
-    auto_ev: '新能源车',
-    tech_hardware: '硬件',
-    telecom: '通信',
-    energy: '能源',
-    consulting: '咨询',
-    startup: '创业',
-    consumer_service: '消费服务',
-  };
-  return map[key] ?? key;
+  return INDUSTRY_LABEL[key] ?? key;
 }

@@ -27,7 +27,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .eq('id', params.id)
     .eq('user_id', user.id)
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[match/[id]]', error);
+    return NextResponse.json({ error: 'internal' }, { status: 500 });
+  }
   if (!data) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   // zombie 自愈:status=computing 且超过阈值 → 同步重跑
@@ -67,7 +70,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const { data: paths } = await sb
       .from('senior_paths')
       .select(
-        'id, school_tier, education_level, major_category, start_year, first_company_tier, first_industry, ' +
+        'id, school_tier, education_level, major_category, gender, start_year, first_company_tier, first_industry, ' +
           'first_position_category, first_level, five_year_company_tier, five_year_industry, ' +
           'five_year_level, five_year_salary, job_changes, industry_changes, path_history',
       )

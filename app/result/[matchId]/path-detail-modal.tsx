@@ -7,22 +7,15 @@
 'use client';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { COMPANY_TIER_LABELS, LEVEL_LABELS, SCHOOL_TIER_LABELS, schoolNameFor } from '@/lib/constants';
+import {
+  COMPANY_TIER_LABELS,
+  INDUSTRY_LABEL,
+  LEVEL_LABELS,
+  SCHOOL_TIER_LABELS,
+  schoolNameFor,
+} from '@/lib/constants';
 import { formatSalary } from '@/lib/utils';
 import type { PathHistoryEntry, SeniorPath } from '@/lib/types';
-
-const INDUSTRY_LABEL: Record<string, string> = {
-  internet: '互联网',
-  finance: '金融',
-  tech_hardware: '硬件',
-  education_training: '教培',
-  real_estate: '地产',
-  auto_ev: '新能源车',
-  telecom: '通信',
-  energy: '能源',
-  consulting: '咨询',
-  startup: '创业',
-};
 
 export default function PathDetailModal({
   open,

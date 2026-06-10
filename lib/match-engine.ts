@@ -66,13 +66,24 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
   const higherTop = higher.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0)).slice(0, topN);
   const lowerTop = lower.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0)).slice(0, topN);
 
-  // 5) 推断 offer 所在行业(从候选 same 组里最多的)
-  const offerIndustry = inferIndustry(sameTop) ?? 'internet';
+  // 5) offer 所在行业:优先用户填的(与输出的 correction.offer_industry 同口径),
+  //    否则从候选 same 组众数推断
+  const offerIndustry =
+    input.offer.first_industry && input.offer.first_industry !== 'other'
+      ? input.offer.first_industry
+      : inferIndustry(sameTop) ?? 'internet';
 
   // 6) 环境校正(基于 same 组中"同 offer 行业"的代表样本)
-  //    避免把不同行业(地产/教培)的政策事件错误聚合到一个互联网 offer 上
-  const sameIndustryPaths = sameTop.filter((p) => p.first_industry === offerIndustry);
-  const repPaths = sameIndustryPaths.length >= 5 ? sameIndustryPaths.slice(0, 50) : sameTop.slice(0, 50);
+  //    避免把不同行业(地产/教培)的政策事件错误聚合到一个互联网 offer 上。
+  //    same 为空(用户院校与候选集差 ≥2 档)时退回全体候选,否则 mean([]) 把校正分打成全 0
+  const correctionPool = sameTop.length
+    ? sameTop
+    : [...higherTop, ...lowerTop]
+        .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+        .slice(0, topN);
+  const sameIndustryPaths = correctionPool.filter((p) => p.first_industry === offerIndustry);
+  const repPaths =
+    sameIndustryPaths.length >= 5 ? sameIndustryPaths.slice(0, 50) : correctionPool.slice(0, 50);
   const corrections = repPaths.map((p) => correctPath(p, input.currentYear));
   const avgCorrectedPath = corrections.length ? mean(corrections.map((c) => c.corrected)) : 0;
   const avgOriginal = corrections.length ? mean(corrections.map((c) => c.original)) : 0;
@@ -84,13 +95,16 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
         .flatMap((c) => c.factors.policy_events),
     ),
   );
-  const aggregatedFactors = {
-    industry: mean(corrections.map((c) => c.factors.industry)),
-    ai_risk: mean(corrections.map((c) => c.factors.ai_risk)),
-    policy_events: policyEventsForOfferIndustry,
-    policy_factor: mean(corrections.map((c) => c.factors.policy_factor ?? 1)),
-    cohort: mean(corrections.map((c) => c.factors.cohort ?? 1)),
-  };
+  // corrections 为空时因子取乘性中性值 1(而不是 mean([])=0),避免"景气度 0%"假文案
+  const aggregatedFactors = corrections.length
+    ? {
+        industry: mean(corrections.map((c) => c.factors.industry)),
+        ai_risk: mean(corrections.map((c) => c.factors.ai_risk)),
+        policy_events: policyEventsForOfferIndustry,
+        policy_factor: mean(corrections.map((c) => c.factors.policy_factor ?? 1)),
+        cohort: mean(corrections.map((c) => c.factors.cohort ?? 1)),
+      }
+    : { industry: 1, ai_risk: 0, policy_events: [] as string[], policy_factor: 1, cohort: 1 };
 
   // 7) 用户起点加成(S4 GPA/实习 + S5 学校/学历):作用在 user 上的乘数,不属于 per-path
   const personal = personalBoostFactor(input.background);
@@ -99,7 +113,7 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
   //    salary_baseline 取 sameTop 里 path_history[0].salary 的中位数;
   //    没有 path_history 时退化用 first_company_tier 平均薪资估算(略),这里先按 50%-of-five-year 估算
   const startSalaries: number[] = [];
-  for (const p of sameTop) {
+  for (const p of correctionPool) {
     if (Array.isArray(p.path_history) && p.path_history.length && p.path_history[0].salary) {
       startSalaries.push(p.path_history[0].salary);
     } else if (p.five_year_salary) {
@@ -117,11 +131,11 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
   // 9) 把 personal_boost × offer_salary 作用在 avgCorrected 上
   const avgCorrected = Math.min(100, avgCorrectedPath * personal.factor * offerSalaryF);
 
-  // 10) 可信度信号 + 5 年薪资分位(S1 + S7)
-  const sampleSize = sameTop.length;
-  const simValues = sameTop.map((p) => p.similarity ?? 0).filter((s) => s > 0);
+  // 10) 可信度信号 + 5 年薪资分位(S1 + S7)—— 与校正样本同池(same 空时为回退池)
+  const sampleSize = correctionPool.length;
+  const simValues = correctionPool.map((p) => p.similarity ?? 0).filter((s) => s > 0);
   const avgSimilarity = simValues.length ? quantile(simValues, 0.5) : 0;
-  const fiveYearSalaries = sameTop.map((p) => p.five_year_salary ?? 0).filter((s) => s > 0);
+  const fiveYearSalaries = correctionPool.map((p) => p.five_year_salary ?? 0).filter((s) => s > 0);
   const salaryP10 = fiveYearSalaries.length ? Math.round(quantile(fiveYearSalaries, 0.1)) : 0;
   const salaryP50 = fiveYearSalaries.length ? Math.round(quantile(fiveYearSalaries, 0.5)) : 0;
   const salaryP90 = fiveYearSalaries.length ? Math.round(quantile(fiveYearSalaries, 0.9)) : 0;
@@ -161,10 +175,8 @@ export async function matchOffer(input: MatchInput, svc?: SupabaseSvc): Promise<
       salary_p90: salaryP90,
       salary_baseline: salaryBaseline ? Math.round(salaryBaseline) : undefined,
       match_level: matchLevel,
-      // 优先用用户填的行业,否则用候选集推断的;供 AI 联网简报使用
-      offer_industry: input.offer.first_industry && input.offer.first_industry !== 'other'
-        ? input.offer.first_industry
-        : offerIndustry,
+      // offerIndustry 已优先用户填的行业(见步骤 5);供 AI 联网简报使用
+      offer_industry: offerIndustry,
       // 用户真实院校档次:供前端"同/高/低"分组 + 列表按院校接近度排序
       user_school_tier: input.background.school_tier,
     },

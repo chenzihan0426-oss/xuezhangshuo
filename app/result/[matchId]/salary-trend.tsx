@@ -27,7 +27,8 @@ export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; 
   const salaries: number[] = [];
   for (const p of paths) {
     const s = (p.five_year_salary ?? 0) * salaryScale;
-    if (s > 0) salaries.push(s);
+    if (s <= 0) continue; // 缺薪资的样本不进分布,否则"0-10 万"会出一根假柱
+    salaries.push(s);
     const b = Math.floor(s / 100000) * 10;
     buckets.set(b, (buckets.get(b) ?? 0) + 1);
   }
@@ -40,7 +41,19 @@ export default function SalaryTrend({ paths, salaryScale = 1 }: { paths: any[]; 
 
   const findBucketIdx = (salary: number): number => {
     const b = Math.floor(salary / 100000) * 10;
-    return sorted.findIndex(([k]) => k === b);
+    const exact = sorted.findIndex(([k]) => k === b);
+    if (exact >= 0) return exact;
+    // 分位数插值可能落进空桶(无样本),取 key 最接近的那根柱
+    let nearest = -1;
+    let bestDist = Infinity;
+    sorted.forEach(([k], i) => {
+      const d = Math.abs(k - b);
+      if (d < bestDist) {
+        bestDist = d;
+        nearest = i;
+      }
+    });
+    return nearest;
   };
 
   // 给中位数那一根柱子额外加亮(emerald 强调)

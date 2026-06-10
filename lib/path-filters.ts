@@ -20,7 +20,7 @@ export interface PathFilters {
   startYear?: number;
 }
 
-export function applyFilters(paths: SeniorPath[], f: PathFilters): SeniorPath[] {
+export function applyFilters(paths: SeniorPath[], f: PathFilters, salaryScale = 1): SeniorPath[] {
   return paths.filter((p) => {
     if (f.minJobChanges !== undefined && p.job_changes < f.minJobChanges) return false;
     if (f.maxJobChanges !== undefined && p.job_changes > f.maxJobChanges) return false;
@@ -28,8 +28,10 @@ export function applyFilters(paths: SeniorPath[], f: PathFilters): SeniorPath[] 
     if (f.onlyStayed) {
       if (p.first_company_tier === undefined || p.first_company_tier !== p.five_year_company_tier) return false;
     }
-    if (f.minSalary !== undefined && (p.five_year_salary ?? 0) < f.minSalary) return false;
-    if (f.maxSalary !== undefined && (p.five_year_salary ?? 0) > f.maxSalary) return false;
+    // 薪资阈值与页面展示同口径:都用 ×salaryScale 后的值比较
+    const displaySalary = (p.five_year_salary ?? 0) * salaryScale;
+    if (f.minSalary !== undefined && displaySalary < f.minSalary) return false;
+    if (f.maxSalary !== undefined && displaySalary > f.maxSalary) return false;
     if (f.startYear !== undefined && p.start_year !== f.startYear) return false;
     return true;
   });
