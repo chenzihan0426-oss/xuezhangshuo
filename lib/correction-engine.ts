@@ -4,14 +4,19 @@
  * 输入:一条师兄师姐路径(+ 可选:user background / offer / salary baseline)
  * 输出:基础分 / 校正分 / 因子分解 / 自然语言解释
  *
- * 校正乘式(v2):
+ * 校正乘式(v3):
  *   corrected = base
- *     × industry         (行业景气)
+ *     × industry         (行业景气 —— 同源冲击的唯一数值通道)
  *     × ai_factor        (AI 风险)
- *     × policy_factor    (政策事件)
- *     × cohort           (校招供需 / 时代红利)
+ *     × policy_factor    (政策事件;已建模行业只做解释标签,因子为 1)
+ *     × cohort           (校招供需残差 —— 相对行业趋势多收紧/放松的部分)
  *     × personal_boost   (学校+学历+GPA+实习 综合,作用在 user 起点)
  *     × offer_salary     (Offer 薪资 vs 同岗位中位)
+ *
+ * v3 修复三重计入:互联网 2023 裁员曾同时进 INDUSTRY_INDEX(0.5)、
+ * POLICY_EVENTS(0.7)、COHORT_INDEX(0.72/1.10),一条 2020 互联网路径被
+ * 乘到 ≈0.28,所有互联网 offer 挤在 20-35 分,校正失去区分度。
+ * 现在同一轮冲击只通过行业景气扣一次。
  */
 import {
   AI_RISK_TABLE,
@@ -101,13 +106,18 @@ export function aiFactor(positionCategory: string): { risk: number; factor: numb
 /**
  * 政策事件遮罩:只考虑 path.start_year 之后才发生的事件,因为这些事件
  * "在该师兄起步时还未发生",所以是后置外生冲击。
+ *
+ * 行业已被 INDUSTRY_INDEX 建模时,事件的经济效果已在景气指数里
+ * (例:2023 裁员就是 internet 指数跌到 0.5 的原因),数值因子归 1,
+ * 事件名保留用于解释展示;只有未建模行业才让 impact 进分数。
  */
 export function policyFactor(industry: string, startYear: number): { factor: number; events: string[] } {
   let factor = 1.0;
   const events: string[] = [];
+  const modeledByIndex = industry in INDUSTRY_INDEX;
   for (const ev of POLICY_EVENTS) {
     if (ev.industry === industry && ev.year > startYear) {
-      factor *= ev.impact;
+      if (!modeledByIndex) factor *= ev.impact;
       events.push(ev.name);
     }
   }
@@ -115,11 +125,13 @@ export function policyFactor(industry: string, startYear: number): { factor: num
 }
 
 /**
- * cohort 时代红利因子:取 path.start_year 当年的"行业校招供需"红利系数。
- * 例:2020 互联网 ≈ 1.10(红利期),2024 教培 ≈ 0.30(双减后)。
+ * cohort 时代红利因子(v3:行业趋势残差)。
  *
- * 含义:这条师兄路径"踩到时代窗口"的程度。窗口好,他更容易跑出来,
- * 但用户(2026 起步)享受不到 → 反推用户分要相应折扣。
+ * 校招供需的下行大部分就是行业下行本身,直接乘 now/then 会和
+ * industryFactor 把同一轮衰退扣两次。所以这里只计入"残差":
+ *   cohort = (校招供需 now/then) ÷ (行业景气 now/then)
+ * > 1: 入场供需比行业大盘宽松(赛道虽降温但校招没那么卷)
+ * < 1: 入场供需比行业大盘还紧(行业没怎么跌但校招挤破头)
  */
 export function cohortFactor(industry: string, startYear: number, currentYear = CURRENT_YEAR): number {
   const series = COHORT_INDEX[industry];
@@ -127,10 +139,11 @@ export function cohortFactor(industry: string, startYear: number, currentYear = 
   const then = series[startYear] ?? lastDefined(series, startYear) ?? 1.0;
   const now = series[currentYear] ?? lastDefined(series, currentYear) ?? 1.0;
   if (then === 0) return 1.0;
-  // 用户起步在 now,师兄起步在 then。 cohort = now / then:
-  //   师兄踩到红利(then 大),用户没踩到(now 小)→ cohort < 1,折扣
-  //   师兄入场难(then 小),用户更容易(now 大)→ cohort > 1,加分
-  return clamp(now / then, 0.5, 1.5);
+  const cohortRatio = now / then;
+  const industryRatio = industryFactor(industry, startYear, currentYear);
+  if (industryRatio === 0) return 1.0;
+  // 残差是修正项不是主通道,clamp 比 v2 的 [0.5,1.5] 收得更紧
+  return clamp(cohortRatio / industryRatio, 0.8, 1.2);
 }
 
 /**
@@ -215,9 +228,9 @@ export function generateExplanation(
   if (aiRisk >= 0.6) parts.push(`AI 对该岗位有较高替代风险(${(aiRisk * 100).toFixed(0)}%)`);
   if (events.length) parts.push(`经历过外生事件:${events.join('、')}`);
   if (cohort < 0.85) {
-    parts.push(`同岗位校招供需,你 2026 入场时比师兄当年明显更紧张(仅为当年的 ${(cohort * 100).toFixed(0)}%),同样的努力更难复制他的结果`);
+    parts.push(`即便剔除行业大盘变化,这条赛道的校招供需也比师兄当年更紧(残差 ${(cohort * 100).toFixed(0)}%),同样的努力更难复制他的结果`);
   } else if (cohort > 1.15) {
-    parts.push(`同岗位校招供需,你 2026 入场时比师兄当年更宽松(达当年的 ${(cohort * 100).toFixed(0)}%),这条赛道近年才打开`);
+    parts.push(`剔除行业大盘变化后,校招供需反而比师兄当年宽松(残差 ${(cohort * 100).toFixed(0)}%),入场端没有看上去那么卷`);
   }
   if (personalBoost > 1.05) {
     parts.push(`你的学校 / 学历 / GPA / 实习起点不错,加成 ${((personalBoost - 1) * 100).toFixed(0)}%`);

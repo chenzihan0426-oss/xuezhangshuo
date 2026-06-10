@@ -290,8 +290,15 @@ function CalculationBreakdown({
   const rows: { key: keyof typeof FACTOR_SOURCES; label: string; mult: number; note?: string }[] = [
     { key: 'industry', label: '行业景气', mult: factors.industry },
     { key: 'ai_risk', label: 'AI 替代', mult: aiMult, note: `岗位替代风险 ${(factors.ai_risk * 100).toFixed(0)}%` },
-    { key: 'policy', label: '政策事件', mult: policyMult, note: factors.policy_events.length ? factors.policy_events.join('、') : '无外生冲击' },
-    { key: 'cohort', label: '时代红利', mult: cohort },
+    {
+      key: 'policy',
+      label: '政策事件',
+      mult: policyMult,
+      note: factors.policy_events.length
+        ? `${factors.policy_events.join('、')}${policyMult === 1 ? '(经济影响已计入行业景气,不重复扣分)' : ''}`
+        : '无外生冲击',
+    },
+    { key: 'cohort', label: '时代红利', mult: cohort, note: '剔除行业大盘后的校招供需残差' },
     { key: 'personal', label: '起点加成', mult: personal },
     { key: 'offer_salary', label: 'Offer 薪资', mult: offerSalary },
   ];

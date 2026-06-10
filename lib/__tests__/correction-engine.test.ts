@@ -78,10 +78,11 @@ describe('aiFactor', () => {
 });
 
 describe('policyFactor', () => {
-  it('applies events that happened after start_year', () => {
+  it('collects events after start_year, but factor stays 1 for index-modeled industries (v3 防三重计入)', () => {
     const r = policyFactor('education_training', 2020);
     expect(r.events).toContain('双减政策');
-    expect(r.factor).toBeCloseTo(0.30, 5);
+    // 双减的经济影响已在 INDUSTRY_INDEX(教培 2026=0.3)里,不再重复乘 0.3
+    expect(r.factor).toBe(1.0);
   });
   it('skips events that happened before start_year', () => {
     const r = policyFactor('education_training', 2022);
@@ -102,6 +103,11 @@ describe('correctPath integration', () => {
       2026,
     );
     expect(result.corrected).toBeLessThan(result.original * 0.5);
+  });
+  it('互联网 2020 不被三重计入压垮:corrected ≥ original × 0.45(v3 回归锁)', () => {
+    // v2 时 0.7(industry) × 0.7(policy) × 0.65(cohort) ≈ 0.32,所有互联网 offer 挤在 20-35 分
+    const result = correctPath(fakePath({ start_year: 2020, first_industry: 'internet' }), 2026);
+    expect(result.corrected).toBeGreaterThanOrEqual(result.original * 0.45);
   });
   it('稳定行业不大幅校正', () => {
     // tech_hardware 2020 → 2026:industry 1.20 + cohort 1.15(硬件红利后置)+ AI 因子
@@ -145,22 +151,25 @@ describe('generateExplanation', () => {
   });
 });
 
-describe('cohortFactor', () => {
-  it('互联网 2020 师兄 / 2026 用户:用户起步更难,cohort < 1', () => {
+describe('cohortFactor(v3 行业趋势残差)', () => {
+  it('互联网 2020 师兄 / 2026 用户:校招比行业大盘收得更紧,残差 < 1', () => {
+    // cohort 0.72/1.10 ≈ 0.654,industry 0.7 → 残差 ≈ 0.935
     const v = cohortFactor('internet', 2020, 2026);
     expect(v).toBeLessThan(1);
+    expect(v).toBeGreaterThan(0.85); // 不再是 v2 的 0.65 —— 大头已由行业景气通道扣掉
   });
-  it('创业 2021 师兄(双创红利)/ 2026 用户:用户更难,cohort < 1', () => {
+  it('创业 2021 师兄:校招收紧幅度与行业大盘一致,残差 ≈ 1(不重复扣)', () => {
+    // cohort 0.80/1.20 = industry 0.8/1.2 → 残差 = 1.0
     const v = cohortFactor('startup', 2021, 2026);
-    expect(v).toBeLessThan(1);
+    expect(v).toBeCloseTo(1.0, 5);
   });
   it('未知行业返回 1.0', () => {
     expect(cohortFactor('non_existent_industry', 2020, 2026)).toBe(1.0);
   });
-  it('clamp 边界 [0.5, 1.5]', () => {
+  it('clamp 边界 [0.8, 1.2]', () => {
     const v = cohortFactor('education_training', 2020, 2026);
-    expect(v).toBeGreaterThanOrEqual(0.5);
-    expect(v).toBeLessThanOrEqual(1.5);
+    expect(v).toBeGreaterThanOrEqual(0.8);
+    expect(v).toBeLessThanOrEqual(1.2);
   });
 });
 
