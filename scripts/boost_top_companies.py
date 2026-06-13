@@ -113,7 +113,20 @@ def boost(per_position: int = 8, only_kind: str | None = None):
     targets = [
         c for c in TARGET_COMPANIES if not only_kind or c[4] == only_kind
     ]
+    # 用真实 companies.id 覆盖硬编码 cid —— 否则 first_company_id 对不上用户提交的真实自增 id,L1/L2 永远命不中。
+    # 字典里没有的公司(回查不到)保持 None,退回 tier+行业兜底。
+    name_to_id: dict[str, int] = {}
+    try:
+        for c in sb.table("companies").select("id, name").execute().data or []:
+            name_to_id[c["name"]] = c["id"]
+        missing = [c[1] for c in targets if c[1] not in name_to_id]
+        if missing:
+            print(f"⚠ 以下 boost 目标公司不在 companies 字典,将以 None 写入(仅 tier+行业匹配): {missing}")
+    except Exception as e:
+        print(f"⚠ 拉取 companies 失败,boost first_company_id 全部 None: {e}")
+
     for cid, cname, industry, tier, kind in targets:
+        real_id = name_to_id.get(cname)
         positions = POSITIONS_BY_KIND[kind]
         # 消费服务起步薪资更接地气,学校层级也更分散;金融岗主要来自金融 / 商科 / CS
         if kind == "tech":
@@ -131,8 +144,11 @@ def boost(per_position: int = 8, only_kind: str | None = None):
                 first_level = random.choices(
                     ["graduate", "intern", "junior"], weights=[0.85, 0.05, 0.10], k=1
                 )[0]
+                school_tier = random.choices(
+                    [1, 2, 3, 4], weights=[0.15, 0.35, 0.30, 0.20], k=1
+                )[0]
                 history, jc, ic = build_story(
-                    arch, start_year, tier, industry, pos, first_level
+                    arch, start_year, tier, industry, pos, first_level, school_tier
                 )
                 if history:
                     history[0]["company_name"] = cname
@@ -145,16 +161,14 @@ def boost(per_position: int = 8, only_kind: str | None = None):
                             "archetype": arch,
                             "anchor_company": cname,
                         },
-                        "school_tier": random.choices(
-                            [1, 2, 3, 4], weights=[0.15, 0.35, 0.30, 0.20], k=1
-                        )[0],
+                        "school_tier": school_tier,
                         "major_category": random.choice(major_pool),
                         "education_level": "本科",
                         "gender": random.choices(
                             ["male", "female"], weights=[0.55, 0.45], k=1
                         )[0],
                         "start_year": start_year,
-                        "first_company_id": cid,
+                        "first_company_id": real_id,
                         "first_company_tier": tier,
                         "first_industry": industry,
                         "first_position_category": pos,

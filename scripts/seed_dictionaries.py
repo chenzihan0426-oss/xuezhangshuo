@@ -197,6 +197,36 @@ COMPANIES = [
     ("好未来", 4, "education_training"),
     ("普华永道", 2, "consulting"),
     ("麦肯锡", 2, "consulting"),
+    ("德勤", 2, "consulting"),
+    ("安永", 2, "consulting"),
+    ("毕马威", 2, "consulting"),
+    ("波士顿咨询", 1, "consulting"),
+    ("贝恩咨询", 1, "consulting"),
+    # 消费 / 餐饮 / 连锁 / 酒店 —— 用户常搜,之前不在库导致"查不到"
+    ("星巴克", 3, "consumer_service"),
+    ("瑞幸咖啡", 3, "consumer_service"),
+    ("海底捞", 3, "consumer_service"),
+    ("麦当劳", 3, "consumer_service"),
+    ("肯德基", 3, "consumer_service"),
+    ("华住酒店", 3, "consumer_service"),
+    ("喜茶", 3, "consumer_service"),
+    ("名创优品", 3, "consumer_service"),
+    ("西贝莜面村", 4, "consumer_service"),
+    ("农夫山泉", 3, "consumer_service"),
+    ("元气森林", 3, "consumer_service"),
+    ("蜜雪冰城", 4, "consumer_service"),
+    # 快消 / 制造 / 车企扩
+    ("宝洁", 2, "consumer_service"),
+    ("联合利华", 2, "consumer_service"),
+    ("欧莱雅", 2, "consumer_service"),
+    ("比亚迪", 1, "auto_ev"),
+    ("特斯拉", 1, "auto_ev"),
+    ("宁德时代", 1, "tech_hardware"),
+    ("大疆", 1, "tech_hardware"),
+    ("OPPO", 2, "tech_hardware"),
+    ("vivo", 2, "tech_hardware"),
+    ("网易", 1, "internet"),
+    ("携程", 2, "internet"),
     ("一家不知名创业公司", 7, "startup"),
 ]
 
@@ -226,32 +256,40 @@ POSITIONS = [
 ]
 
 
+def _insert_missing(sb, table: str, key: str, rows: list):
+    """这些字典表没有 name 的唯一约束,upsert(on_conflict) 用不了。
+    改成:查出已存在的 key,只插缺的。幂等,可重复跑不产生重复。"""
+    existing = set()
+    page = 0
+    while True:
+        chunk = sb.table(table).select(key).range(page * 1000, page * 1000 + 999).execute().data or []
+        existing.update(r[key] for r in chunk)
+        if len(chunk) < 1000:
+            break
+        page += 1
+    to_add = [r for r in rows if r[key] not in existing]
+    if to_add:
+        sb.table(table).insert(to_add).execute()
+    print(f"  {table}: 已有 {len(existing)},新增 {len(to_add)}")
+
+
 def main():
     sb = get_supabase()
 
     print(f"seeding {len(SCHOOLS)} schools…")
-    sb.table("schools").upsert(
-        [
-            dict(name=n, tier=t, province=p, is_c9=c9, is_985=m985, is_211=m211)
-            for (n, t, p, c9, m985, m211) in SCHOOLS
-        ],
-        on_conflict="name",
-    ).execute()
+    _insert_missing(sb, "schools", "name", [
+        dict(name=n, tier=t, province=p, is_c9=c9, is_985=m985, is_211=m211)
+        for (n, t, p, c9, m985, m211) in SCHOOLS
+    ])
 
     print(f"seeding {len(MAJORS)} majors…")
-    sb.table("majors").upsert(
-        [dict(name=n, category=c) for (n, c) in MAJORS], on_conflict="name"
-    ).execute()
+    _insert_missing(sb, "majors", "name", [dict(name=n, category=c) for (n, c) in MAJORS])
 
     print(f"seeding {len(COMPANIES)} companies…")
-    sb.table("companies").upsert(
-        [dict(name=n, tier=t, industry=i) for (n, t, i) in COMPANIES], on_conflict="name"
-    ).execute()
+    _insert_missing(sb, "companies", "name", [dict(name=n, tier=t, industry=i) for (n, t, i) in COMPANIES])
 
     print(f"seeding {len(POSITIONS)} positions…")
-    sb.table("positions").upsert(
-        [dict(category=c, name=n) for (c, n) in POSITIONS], on_conflict="category"
-    ).execute()
+    _insert_missing(sb, "positions", "category", [dict(category=c, name=n) for (c, n) in POSITIONS])
 
     print("done.")
 

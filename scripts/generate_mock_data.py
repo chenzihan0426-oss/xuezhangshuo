@@ -18,6 +18,11 @@ from _common import get_supabase, has_dashscope, jsonl_append, ROOT
 # ============ 真实分布(基于智联校园 2024 + 麦可思公开数据)============
 SCHOOL_TIER_DIST: Dict[int, float] = {1: 0.05, 2: 0.10, 3: 0.15, 4: 0.30, 5: 0.40}
 
+# 学校层级对起薪的直接乘数。之前薪资只看公司 tier、完全不看学校,导致同 tier 公司里
+# 二本和 C9 起薪一样,叠加 rocket 原型大乘数后差学校单点反超。这里把学校红利打进基准薪资。
+# 1=C9/顶尖 … 5=二本。与 lib/constants.ts 的 SCHOOL_TIER_MULTIPLIER 同方向。
+SCHOOL_SALARY_MULTIPLIER: Dict[int, float] = {1: 1.12, 2: 1.06, 3: 1.00, 4: 0.95, 5: 0.90}
+
 MAJOR_DIST: Dict[str, float] = {
     "computer_science": 0.15,
     "business": 0.20,
@@ -89,9 +94,14 @@ def jump_tier(current: int) -> int:
     )[0]
 
 
-def pick_archetype() -> str:
+def pick_archetype(school_tier: int = 3) -> str:
     names = [a[0] for a in STORY_ARCHETYPES]
     weights = [a[1] for a in STORY_ARCHETYPES]
+    # 差学校(tier 4/5)抽到 rocket / frequent_jumper 这类高乘数"爆发"原型的概率降低,
+    # 多落到 steady / plateaued,避免少数极值把分组中位数拉到反超好学校。
+    if school_tier >= 4:
+        adj = {"rocket": 0.4, "frequent_jumper": 0.6, "steady_climber": 1.3, "plateaued": 1.3}
+        weights = [w * adj.get(n, 1.0) for n, w in zip(names, weights)]
     return random.choices(names, weights=weights, k=1)[0]
 
 
@@ -112,10 +122,12 @@ def pick_pivot_industry(current: str, start_year: int) -> str:
 
 
 def build_story(arch: str, start_year: int, first_company_tier: int,
-                first_industry: str, first_position: str, first_level: str) -> Tuple[List[dict], int, int]:
+                first_industry: str, first_position: str, first_level: str,
+                school_tier: int = 3) -> Tuple[List[dict], int, int]:
     """
     返回 (path_history, total_job_changes, total_industry_changes)
     path_history 长度 6(year 0 = 入职年,year 5 = 5 年后)
+    school_tier 影响起薪基准(好学校红利),默认 3 = 中性。
     """
     history: List[dict] = []
     cur_level = first_level
@@ -124,7 +136,10 @@ def build_story(arch: str, start_year: int, first_company_tier: int,
     cur_position = first_position
     job_changes = 0
     industry_changes = 0
-    salary_base = base_salary_for(cur_tier, cur_level, cur_industry)
+    salary_base = int(
+        base_salary_for(cur_tier, cur_level, cur_industry)
+        * SCHOOL_SALARY_MULTIPLIER.get(school_tier, 1.0)
+    )
 
     for year_offset in range(6):
         year = start_year + year_offset
@@ -246,7 +261,7 @@ def weighted_choice(dist: Dict):
     return random.choices(list(dist.keys()), weights=list(dist.values()), k=1)[0]
 
 
-def generate_one(start_year: int) -> dict:
+def generate_one(start_year: int, company_pool: Dict[Tuple[int, str], List[Tuple[int, str]]] | None = None) -> dict:
     school_tier = weighted_choice(SCHOOL_TIER_DIST)
     major_category = weighted_choice(MAJOR_DIST)
     first_company_tier = weighted_choice(FIRST_COMPANY_TIER_GIVEN_SCHOOL[school_tier])
@@ -254,10 +269,21 @@ def generate_one(start_year: int) -> dict:
     first_position = weighted_choice(POSITION_GIVEN_MAJOR.get(major_category, POSITION_GIVEN_MAJOR["other"]))
     first_level = random.choices(["intern", "graduate", "junior"], weights=[0.05, 0.85, 0.10], k=1)[0]
 
-    arch = pick_archetype()
+    # 从真实在库公司里挑一个匹配 (tier, industry) 的,填真实自增 id,让 L1/L2 同公司精准匹配能命中。
+    # 字典里没有对应公司的(tier,行业)组合则保持 None,退回 L3 tier+行业兜底。
+    first_company_id = None
+    first_company_name = None
+    if company_pool:
+        bucket = company_pool.get((first_company_tier, first_industry))
+        if bucket:
+            first_company_id, first_company_name = random.choice(bucket)
+
+    arch = pick_archetype(school_tier)
     history, job_changes, industry_changes = build_story(
-        arch, start_year, first_company_tier, first_industry, first_position, first_level,
+        arch, start_year, first_company_tier, first_industry, first_position, first_level, school_tier,
     )
+    if first_company_name and history:
+        history[0]["company_name"] = first_company_name
 
     last = history[-1]
     return dict(
@@ -268,7 +294,7 @@ def generate_one(start_year: int) -> dict:
         education_level="本科",
         gender=random.choices(["male", "female"], weights=[0.55, 0.45], k=1)[0],
         start_year=start_year,
-        first_company_id=None,
+        first_company_id=first_company_id,
         first_company_tier=first_company_tier,
         first_industry=first_industry,
         first_position_category=first_position,
@@ -287,13 +313,26 @@ def generate_one(start_year: int) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=1000)
+    parser.add_argument("--count", type=int, default=3000)
     parser.add_argument("--batch", type=int, default=200)
     args = parser.parse_args()
 
     sb = get_supabase()
     if not has_dashscope():
         print("(DASHSCOPE_API_KEY 未设置,纯统计抽样,不调 LLM)")
+
+    # 回查真实 companies 表,按 (tier, industry) 分桶,拿到真实自增 id。
+    # 不能硬编码 id —— companies.id 是 SERIAL 自增,seed 后才确定。
+    company_pool: Dict[Tuple[int, str], List[Tuple[int, str]]] = {}
+    try:
+        comp_rows = sb.table("companies").select("id, name, tier, industry").execute().data or []
+        for c in comp_rows:
+            if c.get("tier") is None or not c.get("industry"):
+                continue
+            company_pool.setdefault((c["tier"], c["industry"]), []).append((c["id"], c["name"]))
+        print(f"loaded {len(comp_rows)} companies into {len(company_pool)} (tier,industry) buckets")
+    except Exception as e:
+        print(f"⚠ 拉取 companies 失败,first_company_id 将全为 None(仅退回 tier+行业匹配): {e}")
 
     years = [2019, 2020, 2021]
     per_year = args.count // 3 + 1
@@ -303,7 +342,7 @@ def main():
     for y in years:
         for _ in range(per_year):
             try:
-                rows.append(generate_one(y))
+                rows.append(generate_one(y, company_pool))
             except Exception as e:
                 jsonl_append(errors_path, {"year": y, "error": str(e)})
     rows = rows[: args.count]
